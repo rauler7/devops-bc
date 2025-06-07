@@ -11,17 +11,11 @@ terraform {
   }
 }
 
-resource "kubernetes_namespace" "jenkins" {
-  metadata {
-    name = var.namespace
-  }
-}
-
 resource "helm_release" "jenkins" {
   name       = "jenkins"
   repository = "https://charts.jenkins.io"
   chart      = "jenkins"
-  namespace  = kubernetes_namespace.jenkins.metadata[0].name
+  namespace  = var.namespace
   version    = var.jenkins_chart_version
 
   values = [
@@ -37,6 +31,4 @@ resource "helm_release" "jenkins" {
     name  = "controller.ingress.enabled"
     value = var.ingress_enabled
   }
-
-  depends_on = [kubernetes_namespace.jenkins]
 } 
