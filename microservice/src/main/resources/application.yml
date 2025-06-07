@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: microservice
+
+app:
+  config:
+    property: "This is a local configuration property"

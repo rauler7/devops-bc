@@ -1,0 +1,99 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+                apiVersion: v1
+                kind: Pod
+                spec:
+                  containers:
+                  - name: maven
+                    image: maven:3.8.6-openjdk-17
+                    command:
+                    - cat
+                    tty: true
+                  - name: docker
+                    image: docker:20.10.16
+                    command:
+                    - cat
+                    tty: true
+                    volumeMounts:
+                    - mountPath: /var/run/docker.sock
+                      name: docker-sock
+                  volumes:
+                  - name: docker-sock
+                    hostPath:
+                      path: /var/run/docker.sock
+            '''
+        }
+    }
+
+    environment {
+        DOCKER_REGISTRY = 'localhost:5000'
+        APP_NAME = 'microservice'
+        VAULT_ADDR = 'http://vault.devops-tools:8200'
+        VAULT_TOKEN = credentials('vault-token')
+    }
+
+    stages {
+        stage('Get Vault Secret') {
+            steps {
+                container('maven') {
+                    script {
+                        def secret = sh(
+                            script: """
+                                curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
+                                ${VAULT_ADDR}/v1/secret/microservice | jq -r '.data.APP_SECRET'
+                            """,
+                            returnStdout: true
+                        ).trim()
+                        env.APP_SECRET = secret
+                    }
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                container('maven') {
+                    sh 'mvn clean package -DskipTests'
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                container('docker') {
+                    sh """
+                        docker build -t ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} .
+                        docker push ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER}
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Development') {
+            steps {
+                container('maven') {
+                    sh """
+                        kubectl set env deployment/${APP_NAME} \
+                        APP_SECRET=${APP_SECRET} \
+                        -n development
+                        kubectl set image deployment/${APP_NAME} \
+                        ${APP_NAME}=${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} \
+                        -n development
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            container('maven') {
+                sh """
+                    kubectl rollout undo deployment/${APP_NAME} -n development
+                """
+            }
+        }
+    }
+} 

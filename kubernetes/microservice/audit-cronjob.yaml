@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kubelet-audit
+  namespace: development
+spec:
+  schedule: "*/10 * * * *" # Run every 10 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: audit
+              image: bitnami/kubectl:latest
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  kubectl get events --field-selector source=kubelet --sort-by='.lastTimestamp' | \
+                  grep -E "Failed|Error|CrashLoopBackOff|ImagePullBackOff" > /tmp/events.log
+
+                  if [ -s /tmp/events.log ]; then
+                    echo "Critical events detected at $(date)" >> /tmp/events.log
+                    # Add your alert mechanism here
+                  fi
+          restartPolicy: OnFailure
