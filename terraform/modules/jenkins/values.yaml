@@ -22,11 +22,32 @@ controller:
     -Xmx1024m
     -XX:MaxRAM=2g
     -Dhudson.model.DirectoryBrowserSupport.CSP=""
+  lifecycle:
+    postStart:
+      exec:
+        command:
+          - /bin/sh
+          - -c
+          - |
+            echo "Waiting for Jenkins to start..."
+            sleep 30
+            echo "Jenkins startup complete"
 
 persistence:
   enabled: true
   size: 8Gi
+  storageClass: "standard"
 
 serviceAccount:
   create: true
   annotations: {}
+
+agent:
+  enabled: true
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
