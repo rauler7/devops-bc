@@ -152,10 +152,6 @@ terraform apply
 - Regular security audits and compliance checks
 
 ## Monitoring and Logging
-
-- Prometheus for metrics collection
-- Grafana for visualization
-- ELK stack for log aggregation
 - Custom audit logging for security events
 
 ## Troubleshooting
@@ -179,18 +175,6 @@ terraform apply
    - Verify ConfigMap and Secret existence
    - Review pod logs
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
 ## License
 
 MIT
-
-## Contact
-
-For questions and support, please open an issue in the repository.
