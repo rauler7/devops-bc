@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+      {{- if .Values.vault.enabled }}
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-inject-status: "update"
+        vault.hashicorp.com/role: {{ .Values.vault.role }}
+        vault.hashicorp.com/agent-inject-secret-config.json: {{ .Values.vault.path }}
+        vault.hashicorp.com/agent-inject-template-config.json: |
+          {{ "{{" }} with secret "{{ .Values.vault.path }}" {{ "}}" }}
+          {
+            "database": {
+              "host": "{{ "{{" }} .Data.data.database_host {{ "}}" }}",
+              "port": "{{ "{{" }} .Data.data.database_port {{ "}}" }}",
+              "name": "{{ "{{" }} .Data.data.database_name {{ "}}" }}",
+              "user": "{{ "{{" }} .Data.data.database_user {{ "}}" }}",
+              "password": "{{ "{{" }} .Data.data.database_password {{ "}}" }}"
+            },
+            "api": {
+              "key": "{{ "{{" }} .Data.data.api_key {{ "}}" }}"
+            }
+          }
+          {{ "{{" }} end {{ "}}" }}
+      {{- end }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.vault.enabled }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+          {{- end }}
+      {{- if .Values.vault.enabled }}
+      volumes:
+        - name: config-volume
+          emptyDir: {}
+      {{- end }} 

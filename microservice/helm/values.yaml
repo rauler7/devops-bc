@@ -1,0 +1,33 @@
+replicaCount: 2
+
+image:
+  repository: microservice
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+vault:
+  enabled: true
+  role: microservice
+  path: secret/microservice
+  agent:
+    enabled: true
+    inject: true
+    configMap: vault-agent-config
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

@@ -1,12 +1,20 @@
 terraform {
   required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.24"
-    }
     kind = {
       source  = "tehcyx/kind"
-      version = "~> 0.2.1"
+      version = "~> 0.8.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.37.1"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.17.0"
+    }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = ">= 1.14.0"
     }
   }
 }
@@ -26,12 +34,12 @@ resource "kind_cluster" "development" {
       ]
       extra_port_mappings {
         container_port = 80
-        host_port      = 8080
+        host_port      = 8081
         protocol       = "TCP"
       }
       extra_port_mappings {
         container_port = 443
-        host_port      = 8443
+        host_port      = 8444
         protocol       = "TCP"
       }
     }
@@ -42,7 +50,18 @@ resource "kind_cluster" "development" {
   }
 }
 
+# Configure providers to use the development cluster
 provider "kubernetes" {
+  config_path = kind_cluster.development.kubeconfig_path
+}
+
+provider "helm" {
+  kubernetes {
+    config_path = kind_cluster.development.kubeconfig_path
+  }
+}
+
+provider "kubectl" {
   config_path = kind_cluster.development.kubeconfig_path
 }
 
@@ -54,135 +73,63 @@ resource "kubernetes_namespace" "microservice" {
   depends_on = [kind_cluster.development]
 }
 
-# Create ConfigMap for microservice configuration
-resource "kubernetes_config_map" "microservice_config" {
+# Create namespace for NGINX Ingress Controller
+resource "kubernetes_namespace" "ingress_nginx" {
   metadata {
-    name      = "microservice-config"
-    namespace = kubernetes_namespace.microservice.metadata[0].name
+    name = "ingress-nginx"
   }
-
-  data = {
-    "application.properties" = <<-EOT
-      app.name=Microservice Demo
-      app.version=1.0.0
-      app.description=Java 17 Microservice Demo
-    EOT
-  }
-
-  depends_on = [kubernetes_namespace.microservice]
+  depends_on = [kind_cluster.development]
 }
 
-# Create deployment for the microservice
-resource "kubernetes_deployment" "microservice" {
-  metadata {
-    name      = "microservice"
-    namespace = kubernetes_namespace.microservice.metadata[0].name
+# Deploy NGINX Ingress Controller
+resource "helm_release" "nginx_ingress" {
+  name       = "nginx-ingress"
+  repository = "https://kubernetes.github.io/ingress-nginx"
+  chart      = "ingress-nginx"
+  namespace  = kubernetes_namespace.ingress_nginx.metadata[0].name
+  version    = "4.9.0"
+  timeout    = 600 # 10 minutes timeout
+
+  set {
+    name  = "controller.service.type"
+    value = "NodePort"
   }
 
-  spec {
-    replicas = 2
-
-    selector {
-      match_labels = {
-        app = "microservice"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "microservice"
-        }
-      }
-
-      spec {
-        container {
-          image = "localhost:5000/microservice:latest"
-          name  = "microservice"
-
-          port {
-            container_port = 8080
-          }
-
-          env {
-            name  = "APP_CONFIG_PATH"
-            value = "/app/config/application.properties"
-          }
-
-          volume_mount {
-            name       = "config-volume"
-            mount_path = "/app/config"
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/actuator/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds       = 10
-          }
-
-          readiness_probe {
-            http_get {
-              path = "/actuator/health"
-              port = 8080
-            }
-            initial_delay_seconds = 5
-            period_seconds       = 5
-          }
-        }
-
-        volume {
-          name = "config-volume"
-          config_map {
-            name = kubernetes_config_map.microservice_config.metadata[0].name
-          }
-        }
-      }
-    }
+  set {
+    name  = "controller.service.nodePorts.http"
+    value = "30080"
   }
 
-  depends_on = [kubernetes_config_map.microservice_config]
-}
-
-# Create service for the microservice
-resource "kubernetes_service" "microservice" {
-  metadata {
-    name      = "microservice"
-    namespace = kubernetes_namespace.microservice.metadata[0].name
+  set {
+    name  = "controller.service.nodePorts.https"
+    value = "30443"
   }
 
-  spec {
-    selector = {
-      app = "microservice"
-    }
-
-    port {
-      port        = 80
-      target_port = 8080
-    }
-
-    type = "LoadBalancer"
+  set {
+    name  = "controller.ingressClassResource.name"
+    value = "nginx"
   }
 
-  depends_on = [kubernetes_deployment.microservice]
-}
-
-# Create secret for the microservice
-resource "kubernetes_secret" "microservice_secret" {
-  metadata {
-    name      = "microservice-secret"
-    namespace = kubernetes_namespace.microservice.metadata[0].name
+  set {
+    name  = "controller.ingressClassResource.enabled"
+    value = "true"
   }
 
-  data = {
-    app-secret = "development-secret-value"
+  set {
+    name  = "controller.ingressClassResource.default"
+    value = "true"
   }
+
+  set {
+    name  = "controller.admissionWebhooks.enabled"
+    value = "false"
+  }
+
+  depends_on = [kind_cluster.development, kubernetes_namespace.ingress_nginx]
 }
 
 # Deploy the audit CronJob
-resource "kubernetes_cron_job" "kubelet_audit" {
+resource "kubernetes_cron_job_v1" "kubelet_audit" {
   metadata {
     name      = "kubelet-audit"
     namespace = kubernetes_namespace.microservice.metadata[0].name
@@ -192,11 +139,15 @@ resource "kubernetes_cron_job" "kubelet_audit" {
     schedule = "*/10 * * * *"
 
     job_template {
-      metadata {}
+      metadata {
+        name = "kubelet-audit-job"
+      }
 
       spec {
         template {
-          metadata {}
+          metadata {
+            name = "kubelet-audit-pod"
+          }
 
           spec {
             container {
@@ -218,31 +169,6 @@ resource "kubernetes_cron_job" "kubelet_audit" {
       }
     }
   }
-}
-
-resource "helm_release" "nginx_ingress" {
-  name       = "nginx-ingress"
-  repository = "https://kubernetes.github.io/ingress-nginx"
-  chart      = "ingress-nginx"
-  namespace  = kubernetes_namespace.microservice.metadata[0].name
-  version    = "4.7.1"
-
-  set {
-    name  = "controller.service.type"
-    value = "NodePort"
-  }
-
-  set {
-    name  = "controller.service.nodePorts.http"
-    value = "30080"
-  }
-
-  set {
-    name  = "controller.service.nodePorts.https"
-    value = "30443"
-  }
-
-  depends_on = [kind_cluster.development]
 }
 
 resource "kubernetes_deployment" "microservice1" {
@@ -275,72 +201,12 @@ resource "kubernetes_deployment" "microservice1" {
           port {
             container_port = 80
           }
-
-          resources {
-            limits = {
-              cpu    = "0.5"
-              memory = "512Mi"
-            }
-            requests = {
-              cpu    = "250m"
-              memory = "50Mi"
-            }
-          }
         }
       }
     }
   }
 
-  depends_on = [kind_cluster.development]
-}
-
-resource "kubernetes_deployment" "microservice2" {
-  metadata {
-    name      = "microservice2"
-    namespace = kubernetes_namespace.microservice.metadata[0].name
-  }
-
-  spec {
-    replicas = 2
-
-    selector {
-      match_labels = {
-        app = "microservice2"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "microservice2"
-        }
-      }
-
-      spec {
-        container {
-          image = "nginx:latest"
-          name  = "microservice2"
-
-          port {
-            container_port = 80
-          }
-
-          resources {
-            limits = {
-              cpu    = "0.5"
-              memory = "512Mi"
-            }
-            requests = {
-              cpu    = "250m"
-              memory = "50Mi"
-            }
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [kind_cluster.development]
+  depends_on = [kubernetes_namespace.microservice]
 }
 
 resource "kubernetes_service" "microservice1" {
@@ -365,31 +231,9 @@ resource "kubernetes_service" "microservice1" {
   depends_on = [kubernetes_deployment.microservice1]
 }
 
-resource "kubernetes_service" "microservice2" {
+resource "kubernetes_ingress_v1" "microservice" {
   metadata {
-    name      = "microservice2"
-    namespace = kubernetes_namespace.microservice.metadata[0].name
-  }
-
-  spec {
-    selector = {
-      app = "microservice2"
-    }
-
-    port {
-      port        = 80
-      target_port = 80
-    }
-
-    type = "ClusterIP"
-  }
-
-  depends_on = [kubernetes_deployment.microservice2]
-}
-
-resource "kubernetes_ingress_v1" "microservices" {
-  metadata {
-    name      = "microservices-ingress"
+    name      = "microservice-ingress"
     namespace = kubernetes_namespace.microservice.metadata[0].name
     annotations = {
       "kubernetes.io/ingress.class" = "nginx"
@@ -398,10 +242,9 @@ resource "kubernetes_ingress_v1" "microservices" {
 
   spec {
     rule {
-      host = "microservice1.local"
       http {
         path {
-          path      = "/"
+          path = "/"
           path_type = "Prefix"
           backend {
             service {
@@ -414,25 +257,30 @@ resource "kubernetes_ingress_v1" "microservices" {
         }
       }
     }
-
-    rule {
-      host = "microservice2.local"
-      http {
-        path {
-          path      = "/"
-          path_type = "Prefix"
-          backend {
-            service {
-              name = kubernetes_service.microservice2.metadata[0].name
-              port {
-                number = 80
-              }
-            }
-          }
-        }
-      }
-    }
   }
 
-  depends_on = [helm_release.nginx_ingress]
-} 
+  depends_on = [kubernetes_service.microservice1, helm_release.nginx_ingress]
+}
+
+resource "local_file" "install_cloud_provider" {
+  filename = "${path.module}/install-cloud-provider.sh"
+  content  = <<-EOT
+    #!/bin/bash
+    go install sigs.k8s.io/cloud-provider-kind@latest
+    cloud-provider-kind &
+  EOT
+}
+
+resource "local_file" "verify_loadbalancer" {
+  filename = "${path.module}/verify-loadbalancer.sh"
+  content  = <<-EOT
+    #!/bin/bash
+    LB_IP=$$(kubectl get svc/foo-service -n microservice -o=jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    for i in {1..5}; do
+      echo "Request $i:"
+      curl "$${LB_IP}:5678"
+      echo -e "\\n"
+      sleep 1
+    done
+  EOT
+}

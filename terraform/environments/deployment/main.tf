@@ -2,15 +2,19 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.24"
+      version = "~> 2.37.1"
     }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.12"
+      version = "~> 2.17.0"
     }
     kind = {
       source  = "tehcyx/kind"
-      version = "~> 0.2.1"
+      version = "~> 0.8.0"
+    }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = ">= 1.14.0"
     }
   }
 }
@@ -71,12 +75,11 @@ resource "kubernetes_namespace" "vault" {
   depends_on = [kind_cluster.deployment]
 }
 
-# Deploy Jenkins
+# Deploy Jenkins with required plugins
 module "jenkins" {
   source = "../../modules/jenkins"
 
   namespace           = kubernetes_namespace.jenkins.metadata[0].name
-  jenkins_chart_version = "4.7.1"
   service_type        = "NodePort"
   ingress_enabled     = true
 
@@ -88,7 +91,7 @@ module "vault" {
   source = "../../modules/vault"
 
   namespace         = kubernetes_namespace.vault.metadata[0].name
-  vault_chart_version = "0.27.0"
+  vault_chart_version = "0.28.0"
   dev_mode          = true
   standalone_mode   = true
 
@@ -107,5 +110,58 @@ resource "kubernetes_secret" "vault_token" {
   }
 
   depends_on = [module.vault, module.jenkins]
+}
+
+# Create ConfigMap for Jenkins configuration
+resource "kubernetes_config_map" "jenkins_config" {
+  metadata {
+    name      = "jenkins-config"
+    namespace = kubernetes_namespace.jenkins.metadata[0].name
+  }
+
+  data = {
+    "jenkins.yaml" = <<-EOT
+      jenkins:
+        systemMessage: "Jenkins configured automatically by Terraform"
+        numExecutors: 2
+        scmCheckoutRetryCount: 3
+        mode: NORMAL
+        securityRealm:
+          local:
+            allowsSignup: false
+            users:
+              - id: "admin"
+                password: "admin"
+        authorizationStrategy:
+          roleBased:
+            roles:
+              global:
+                - name: "admin"
+                  permissions:
+                    - "Overall/Administer"
+                  assignments:
+                    - "admin"
+        clouds:
+          - kubernetes:
+              name: "kubernetes"
+              serverUrl: "https://kubernetes.default.svc.cluster.local"
+              skipTlsVerify: true
+              namespace: "jenkins"
+              jenkinsUrl: "http://jenkins:8080"
+              jenkinsTunnel: "jenkins-agent:50000"
+              containerCapStr: "10"
+              maxRequestsPerHostStr: "32"
+              retentionTimeout: 5
+              connectTimeout: 5
+              readTimeout: 15
+        tool:
+          git:
+            installations:
+              - name: "Default"
+                home: "git"
+    EOT
+  }
+
+  depends_on = [module.jenkins]
 }
 

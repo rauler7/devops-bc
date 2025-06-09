@@ -5,9 +5,9 @@ variable "namespace" {
 }
 
 variable "jenkins_chart_version" {
-  description = "Version of the Jenkins Helm chart"
+  description = "Optional chart version for Jenkins Helm release"
   type        = string
-  default     = "4.7.1"
+  default     = null
 }
 
 variable "service_type" {

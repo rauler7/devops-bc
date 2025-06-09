@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-agent-config
+data:
+  config.hcl: |
+    exit_after_auth = true
+    pid_file = "/home/vault/pidfile"
+
+    auto_auth {
+      method "kubernetes" {
+        mount_path = "auth/kubernetes"
+        config = {
+          role = "{{ .Values.vault.role }}"
+        }
+      }
+    }
+
+    template {
+      destination = "/vault/secrets/config.json"
+      contents = <<EOH
+      {{- if .Values.vault.enabled }}
+      {{ "{{" }} with secret "{{ .Values.vault.path }}" {{ "}}" }}
+      {
+        "database": {
+          "host": "{{ "{{" }} .Data.data.database_host {{ "}}" }}",
+          "port": "{{ "{{" }} .Data.data.database_port {{ "}}" }}",
+          "name": "{{ "{{" }} .Data.data.database_name {{ "}}" }}",
+          "user": "{{ "{{" }} .Data.data.database_user {{ "}}" }}",
+          "password": "{{ "{{" }} .Data.data.database_password {{ "}}" }}"
+        },
+        "api": {
+          "key": "{{ "{{" }} .Data.data.api_key {{ "}}" }}"
+        }
+      }
+      {{ "{{" }} end {{ "}}" }}
+      {{- end }}
+      EOH
+    }
