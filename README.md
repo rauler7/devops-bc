@@ -6,7 +6,6 @@
 devops-bc/
 ├── terraform/
 │   ├── modules/
-│   │   ├── kubernetes/
 │   │   ├── jenkins/
 │   │   └── vault/
 │   └── environments/
@@ -30,7 +29,6 @@ devops-bc/
 ## Architecture Diagram
 
 ![DevOpsInfraestructure](https://github.com/user-attachments/assets/b3f3fd78-d7dd-4969-9af9-a7f84396f8b6)
-
 
 ## Overview
 
@@ -152,6 +150,7 @@ terraform apply
 - Regular security audits and compliance checks
 
 ## Monitoring and Logging
+
 - Custom audit logging for security events
 
 ## Troubleshooting
