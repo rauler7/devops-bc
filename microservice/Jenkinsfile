@@ -11,6 +11,11 @@ pipeline {
                     command:
                     - cat
                     tty: true
+                  - name: docker
+                    image: docker:20.10.24
+                    command:
+                    - cat
+                    tty: true
                     volumeMounts:
                     - mountPath: /var/run/docker.sock
                       name: docker-sock
@@ -59,7 +64,7 @@ pipeline {
         
         stage('Build Docker Image') {
             steps {
-                container('maven') {
+                container('docker') {
                     dir('microservice') {
                         sh 'docker build -t ${APP_NAME}:${BUILD_NUMBER} .'
                     }
@@ -72,7 +77,7 @@ pipeline {
                 branch 'develop'
             }
             steps {
-                container('maven') {
+                container('docker') {
                     script {
                         // Login to Vault using userpass
                         sh '''
@@ -110,7 +115,7 @@ pipeline {
                 branch 'main'
             }
             steps {
-                container('maven') {
+                container('docker') {
                     script {
                         // Login to Vault using userpass
                         sh '''
@@ -146,7 +151,7 @@ pipeline {
     
     post {
         always {
-            container('maven') {
+            container('docker') {
                 sh 'rm -f /tmp/kubeconfig-*'
                 deleteDir()
             }
