@@ -45,6 +45,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                sh 'git branch --show-current'
             }
         }
         
@@ -84,7 +85,10 @@ pipeline {
         
         stage('Deploy to Development') {
             when {
-                branch 'develop'
+                expression { 
+                    def branch = sh(script: 'git branch --show-current', returnStdout: true).trim()
+                    return branch == 'develop' || branch == 'development'
+                }
             }
             steps {
                 container('docker-client') {
