@@ -30,10 +30,18 @@ pipeline {
     }
     
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
         stage('Build') {
             steps {
                 container('maven') {
-                    sh 'mvn clean package'
+                    dir('microservice') {
+                        sh 'mvn clean package'
+                    }
                 }
             }
         }
@@ -41,7 +49,9 @@ pipeline {
         stage('Test') {
             steps {
                 container('maven') {
-                    sh 'mvn test'
+                    dir('microservice') {
+                        sh 'mvn test'
+                    }
                 }
             }
         }
@@ -49,7 +59,9 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 container('maven') {
-                    sh 'docker build -t ${APP_NAME}:${BUILD_NUMBER} .'
+                    dir('microservice') {
+                        sh 'docker build -t ${APP_NAME}:${BUILD_NUMBER} .'
+                    }
                 }
             }
         }
