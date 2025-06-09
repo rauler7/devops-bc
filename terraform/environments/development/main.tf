@@ -195,11 +195,33 @@ resource "kubernetes_deployment" "microservice1" {
 
       spec {
         container {
-          image = "nginx:latest"
+          image = "microservice:latest"  # This will be built by Jenkins
           name  = "microservice1"
 
           port {
-            container_port = 80
+            container_port = 8080
+          }
+
+          env {
+            name  = "ENV_VARIABLE"
+            value = "This is an environment variable"
+          }
+
+          env {
+            name  = "CONFIG_PATH"
+            value = "/app/config"
+          }
+
+          volume_mount {
+            name       = "config-volume"
+            mount_path = "/app/config"
+          }
+        }
+
+        volume {
+          name = "config-volume"
+          config_map {
+            name = "microservice-config"
           }
         }
       }
@@ -207,6 +229,20 @@ resource "kubernetes_deployment" "microservice1" {
   }
 
   depends_on = [kubernetes_namespace.microservice]
+}
+
+resource "kubernetes_config_map" "microservice_config" {
+  metadata {
+    name      = "microservice-config"
+    namespace = kubernetes_namespace.microservice.metadata[0].name
+  }
+
+  data = {
+    "config.json" = jsonencode({
+      "setting1" = "value1"
+      "setting2" = "value2"
+    })
+  }
 }
 
 resource "kubernetes_service" "microservice1" {
@@ -222,7 +258,7 @@ resource "kubernetes_service" "microservice1" {
 
     port {
       port        = 80
-      target_port = 80
+      target_port = 8080
     }
 
     type = "ClusterIP"

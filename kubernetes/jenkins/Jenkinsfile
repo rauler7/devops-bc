@@ -5,9 +5,22 @@ pipeline {
         VAULT_ADDR = 'http://vault:8200'
         VAULT_TOKEN = credentials('vault-token')
         APP_NAME = 'microservice'
+        DOCKER_HOST = 'unix:///var/run/docker.sock'
     }
     
     stages {
+        stage('Setup Vault Credentials') {
+            steps {
+                script {
+                    withCredentials([vaultSecret(credentialsId: 'vault-token', path: 'secret/jenkins/token')]) {
+                        sh '''
+                            echo "Vault token configured"
+                        '''
+                    }
+                }
+            }
+        }
+        
         stage('Build Image') {
             steps {
                 script {

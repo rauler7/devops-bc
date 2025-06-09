@@ -20,4 +20,10 @@ variable "standalone_mode" {
   description = "Enable Vault standalone mode"
   type        = bool
   default     = true
+}
+
+output "root_token" {
+  description = "The root token for Vault"
+  value       = kubernetes_secret.vault_root_token.data.token
+  sensitive   = true
 } 

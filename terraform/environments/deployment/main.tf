@@ -16,6 +16,10 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = ">= 1.14.0"
     }
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 3.11.0"
+    }
   }
 }
 
@@ -112,7 +116,55 @@ resource "kubernetes_secret" "vault_token" {
   depends_on = [module.vault, module.jenkins]
 }
 
-# Create ConfigMap for Jenkins configuration
+# Enable userpass auth method in Vault
+resource "vault_auth_backend" "userpass" {
+  type = "userpass"
+  path = "userpass"
+}
+
+# Create Jenkins user in Vault
+resource "vault_generic_endpoint" "jenkins_user" {
+  depends_on = [vault_auth_backend.userpass]
+  path = "auth/userpass/users/jenkins"
+  ignore_absent_fields = true
+
+  data_json = jsonencode({
+    password = "jenkins-vault-password"  # Change this to a secure password
+    policies = ["jenkins"]
+  })
+}
+
+# Create Vault policy for Jenkins
+resource "vault_policy" "jenkins" {
+  name = "jenkins"
+  policy = <<EOT
+path "secret/data/jenkins/*" {
+  capabilities = ["read", "list"]
+}
+
+path "kubeconfig/kv/*" {
+  capabilities = ["read", "list"]
+}
+EOT
+}
+
+# Create initial secrets for Jenkins
+resource "vault_generic_secret" "jenkins_admin" {
+  path      = "secret/jenkins/admin"
+  data_json = jsonencode({
+    username = "admin"
+    password = "admin"
+  })
+}
+
+resource "vault_generic_secret" "jenkins_kubeconfig" {
+  path      = "kubeconfig/kv/development/kubeconfig"
+  data_json = jsonencode({
+    kubeconfig = file("${kind_cluster.deployment.kubeconfig_path}")
+  })
+}
+
+# Update Jenkins ConfigMap to include Vault configuration
 resource "kubernetes_config_map" "jenkins_config" {
   metadata {
     name      = "jenkins-config"
@@ -159,9 +211,18 @@ resource "kubernetes_config_map" "jenkins_config" {
             installations:
               - name: "Default"
                 home: "git"
+        credentials:
+          system:
+            domainCredentials:
+              - credentials:
+                  - vault:
+                      id: "vault-token"
+                      description: "Vault token for Jenkins"
+                      path: "userpass"
+                      username: "jenkins"
+                      password: "jenkins-vault-password"  # Change this to match the password above
     EOT
   }
 
   depends_on = [module.jenkins]
 }
-

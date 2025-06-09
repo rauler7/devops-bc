@@ -54,6 +54,7 @@ resource "helm_release" "jenkins" {
     value = "1Gi"
   }
 
+  # Core plugins
   set {
     name  = "controller.installPlugins[0]"
     value = "kubernetes"
@@ -92,6 +93,27 @@ resource "helm_release" "jenkins" {
   set {
     name  = "controller.installPlugins[7]"
     value = "pipeline-model-definition"
+  }
+
+  # Additional required plugins
+  set {
+    name  = "controller.installPlugins[8]"
+    value = "pipeline-github"
+  }
+
+  set {
+    name  = "controller.installPlugins[9]"
+    value = "pipeline-rest-api"
+  }
+
+  set {
+    name  = "controller.installPlugins[10]"
+    value = "pipeline-stage-view"
+  }
+
+  set {
+    name  = "controller.installPlugins[11]"
+    value = "pipeline-utility-steps"
   }
   
   set {

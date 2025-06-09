@@ -17,6 +17,24 @@ vault:
     enabled: true
     inject: true
     configMap: vault-agent-config
+    template:
+      - name: app-config
+        path: secret/microservice
+        template: |
+          {{ "{{" }} with secret "secret/microservice" {{ "}}" }}
+          {
+            "app_config": "{{ "{{" }} .Data.data.app_config {{ "}}" }}",
+            "app_secret": "{{ "{{" }} .Data.data.app_secret {{ "}}" }}"
+          }
+          {{ "{{" }} end {{ "}}" }}
+
+# Environment variables configuration
+env:
+  APP_CONFIG: ""
+  APP_SECRET: ""
+
+# Environment configuration
+environment: development
 
 resources:
   limits:
