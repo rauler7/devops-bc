@@ -1,0 +1,74 @@
+jenkins:
+  systemMessage: "Jenkins configured automatically by Jenkins Configuration as Code plugin"
+  numExecutors: 2
+  scmCheckoutRetryCount: 3
+  mode: NORMAL
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: "admin"
+            description: "Jenkins administrators"
+            permissions:
+              - "Overall/Administer"
+            assignments:
+              - "admin"
+          - name: "developer"
+            description: "Jenkins developers"
+            permissions:
+              - "Overall/Read"
+              - "Job/Build"
+              - "Job/Read"
+            assignments:
+              - "developer"
+
+  nodes:
+    - permanent:
+        name: "default"
+        numExecutors: 2
+        remoteFS: "/home/jenkins"
+        labelString: "default"
+        mode: NORMAL
+        launcher:
+          ssh:
+            host: "jenkins-agent"
+            credentialsId: "jenkins-agent-ssh"
+
+  clouds:
+    - kubernetes:
+        name: "kubernetes"
+        serverUrl: "https://kubernetes.default.svc.cluster.local"
+        skipTlsVerify: false
+        namespace: "jenkins"
+        jenkinsUrl: "http://jenkins:8080"
+        jenkinsTunnel: "jenkins-agent:50000"
+        containerCapStr: "10"
+        maxRequestsPerHostStr: "32"
+        retentionTimeout: 5
+        connectTimeout: 5
+        readTimeout: 15
+
+  credentials:
+    system:
+      domainCredentials:
+        - credentials:
+            - vaultAppRole:
+                scope: GLOBAL
+                id: "vault-approle"
+                description: "Vault AppRole credentials"
+                roleId: "${VAULT_ROLE_ID}"
+                secretId: "${VAULT_SECRET_ID}"
+                path: "jenkins"
+                engineVersion: 2
+                namespace: "jenkins"
+                url: "http://vault:8200"
+                timeout: 30
+                skipSslVerification: false

@@ -2,21 +2,19 @@ pipeline {
     agent any
     
     environment {
-        DOCKER_IMAGE = 'microservice'
-        DOCKER_TAG = "${BUILD_NUMBER}"
         VAULT_ADDR = 'http://vault:8200'
-        KUBE_CONFIG = credentials('kubeconfig')
+        APP_NAME = 'microservice'
     }
     
     stages {
         stage('Build') {
             steps {
                 script {
-                    // Build the Docker image
-                    sh """
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
-                    """
+                    // Build with Maven
+                    sh 'mvn clean package -DskipTests'
+                    
+                    // Build Docker image locally
+                    sh "docker build -t ${APP_NAME}:${BUILD_NUMBER} ."
                 }
             }
         }
@@ -24,22 +22,8 @@ pipeline {
         stage('Test') {
             steps {
                 script {
-                    // Run tests
-                    sh 'python -m pytest tests/'
-                }
-            }
-        }
-        
-        stage('Push to Registry') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin
-                            docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                            docker push ${DOCKER_IMAGE}:latest
-                        """
-                    }
+                    // Run Maven tests
+                    sh 'mvn test'
                 }
             }
         }
@@ -50,17 +34,20 @@ pipeline {
             }
             steps {
                 script {
-                    withKubeConfig([credentialsId: 'kubeconfig']) {
-                        // Deploy to development cluster
-                        sh """
-                            kubectl config use-context kind-development-cluster
-                            helm upgrade --install microservice ./helm \
-                                --namespace microservice \
-                                --set image.tag=${DOCKER_TAG} \
+                    // Get kubeconfig from Vault
+                    withCredentials([vaultSecret(credentialsId: 'kubeconfig-development', path: 'kubeconfig/kv/development/kubeconfig')]) {
+                        sh '''
+                            echo "$KUBECONFIG" > /tmp/kubeconfig-dev
+                            export KUBECONFIG=/tmp/kubeconfig-dev
+                            
+                            # Deploy using Helm
+                            helm upgrade --install ${APP_NAME} ./helm \
+                                --namespace development \
+                                --set image.repository=${APP_NAME} \
+                                --set image.tag=${BUILD_NUMBER} \
                                 --set vault.enabled=true \
-                                --set vault.role=microservice \
-                                --set vault.path=secret/microservice
-                        """
+                                --set vault.role=${APP_NAME}
+                        '''
                     }
                 }
             }
@@ -72,17 +59,20 @@ pipeline {
             }
             steps {
                 script {
-                    withKubeConfig([credentialsId: 'kubeconfig']) {
-                        // Deploy to production cluster
-                        sh """
-                            kubectl config use-context kind-deployment-cluster
-                            helm upgrade --install microservice ./helm \
-                                --namespace microservice \
-                                --set image.tag=${DOCKER_TAG} \
+                    // Get kubeconfig from Vault
+                    withCredentials([vaultSecret(credentialsId: 'kubeconfig-deployment', path: 'kubeconfig/kv/deployment/kubeconfig')]) {
+                        sh '''
+                            echo "$KUBECONFIG" > /tmp/kubeconfig-deploy
+                            export KUBECONFIG=/tmp/kubeconfig-deploy
+                            
+                            # Deploy using Helm
+                            helm upgrade --install ${APP_NAME} ./helm \
+                                --namespace production \
+                                --set image.repository=${APP_NAME} \
+                                --set image.tag=${BUILD_NUMBER} \
                                 --set vault.enabled=true \
-                                --set vault.role=microservice \
-                                --set vault.path=secret/microservice
-                        """
+                                --set vault.role=${APP_NAME}
+                        '''
                     }
                 }
             }
@@ -91,6 +81,8 @@ pipeline {
     
     post {
         always {
+            // Clean up temporary kubeconfig files
+            sh 'rm -f /tmp/kubeconfig-*'
             cleanWs()
         }
         success {

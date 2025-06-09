@@ -22,6 +22,7 @@ controller:
     - git
     - configuration-as-code
     - blueocean
+    - hashicorp-vault-plugin
 
   javaOpts: >
     -Xms512m -Xmx1024m -XX:MaxRAM=2g -Dhudson.model.DirectoryBrowserSupport.CSP=""
