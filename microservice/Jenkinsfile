@@ -1,8 +1,24 @@
 pipeline {
     agent {
-        docker {
-            image 'maven:3.8.6-openjdk-11'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        kubernetes {
+            yaml '''
+                apiVersion: v1
+                kind: Pod
+                spec:
+                  containers:
+                  - name: maven
+                    image: maven:3.8.6-openjdk-11
+                    command:
+                    - cat
+                    tty: true
+                    volumeMounts:
+                    - mountPath: /var/run/docker.sock
+                      name: docker-sock
+                  volumes:
+                  - name: docker-sock
+                    hostPath:
+                      path: /var/run/docker.sock
+            '''
         }
     }
     
@@ -16,19 +32,25 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'mvn clean package'
+                container('maven') {
+                    sh 'mvn clean package'
+                }
             }
         }
         
         stage('Test') {
             steps {
-                sh 'mvn test'
+                container('maven') {
+                    sh 'mvn test'
+                }
             }
         }
         
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t ${APP_NAME}:${BUILD_NUMBER} .'
+                container('maven') {
+                    sh 'docker build -t ${APP_NAME}:${BUILD_NUMBER} .'
+                }
             }
         }
         
@@ -37,32 +59,34 @@ pipeline {
                 branch 'develop'
             }
             steps {
-                script {
-                    // Login to Vault using userpass
-                    sh '''
-                        VAULT_TOKEN=$(curl -s --request POST \
-                            --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
-                            ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
-                        
-                        export VAULT_TOKEN
-                    '''
-                    
-                    withCredentials([vaultSecret(credentialsId: 'kubeconfig-development', path: 'kubeconfig/kv/development/kubeconfig')]) {
+                container('maven') {
+                    script {
+                        // Login to Vault using userpass
                         sh '''
-                            echo "$KUBECONFIG" > /tmp/kubeconfig-dev
-                            export KUBECONFIG=/tmp/kubeconfig-dev
+                            VAULT_TOKEN=$(curl -s --request POST \
+                                --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
+                                ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
                             
-                            # Deploy using Helm with Vault configuration
-                            helm upgrade --install ${APP_NAME} ./helm \
-                                --set image.repository=${APP_NAME} \
-                                --set image.tag=${BUILD_NUMBER} \
-                                --set environment=development \
-                                --set vault.enabled=true \
-                                --set vault.addr=${VAULT_ADDR} \
-                                --set vault.role=${APP_NAME} \
-                                --set vault.path=secret/microservice \
-                                -n development
+                            export VAULT_TOKEN
                         '''
+                        
+                        withCredentials([vaultSecret(credentialsId: 'kubeconfig-development', path: 'kubeconfig/kv/development/kubeconfig')]) {
+                            sh '''
+                                echo "$KUBECONFIG" > /tmp/kubeconfig-dev
+                                export KUBECONFIG=/tmp/kubeconfig-dev
+                                
+                                # Deploy using Helm with Vault configuration
+                                helm upgrade --install ${APP_NAME} ./helm \
+                                    --set image.repository=${APP_NAME} \
+                                    --set image.tag=${BUILD_NUMBER} \
+                                    --set environment=development \
+                                    --set vault.enabled=true \
+                                    --set vault.addr=${VAULT_ADDR} \
+                                    --set vault.role=${APP_NAME} \
+                                    --set vault.path=secret/microservice \
+                                    -n development
+                            '''
+                        }
                     }
                 }
             }
@@ -73,32 +97,34 @@ pipeline {
                 branch 'main'
             }
             steps {
-                script {
-                    // Login to Vault using userpass
-                    sh '''
-                        VAULT_TOKEN=$(curl -s --request POST \
-                            --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
-                            ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
-                        
-                        export VAULT_TOKEN
-                    '''
-                    
-                    withCredentials([vaultSecret(credentialsId: 'kubeconfig-deployment', path: 'kubeconfig/kv/deployment/kubeconfig')]) {
+                container('maven') {
+                    script {
+                        // Login to Vault using userpass
                         sh '''
-                            echo "$KUBECONFIG" > /tmp/kubeconfig-deploy
-                            export KUBECONFIG=/tmp/kubeconfig-deploy
+                            VAULT_TOKEN=$(curl -s --request POST \
+                                --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
+                                ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
                             
-                            # Deploy using Helm with Vault configuration
-                            helm upgrade --install ${APP_NAME} ./helm \
-                                --set image.repository=${APP_NAME} \
-                                --set image.tag=${BUILD_NUMBER} \
-                                --set environment=production \
-                                --set vault.enabled=true \
-                                --set vault.addr=${VAULT_ADDR} \
-                                --set vault.role=${APP_NAME} \
-                                --set vault.path=secret/microservice \
-                                -n production
+                            export VAULT_TOKEN
                         '''
+                        
+                        withCredentials([vaultSecret(credentialsId: 'kubeconfig-deployment', path: 'kubeconfig/kv/deployment/kubeconfig')]) {
+                            sh '''
+                                echo "$KUBECONFIG" > /tmp/kubeconfig-deploy
+                                export KUBECONFIG=/tmp/kubeconfig-deploy
+                                
+                                # Deploy using Helm with Vault configuration
+                                helm upgrade --install ${APP_NAME} ./helm \
+                                    --set image.repository=${APP_NAME} \
+                                    --set image.tag=${BUILD_NUMBER} \
+                                    --set environment=production \
+                                    --set vault.enabled=true \
+                                    --set vault.addr=${VAULT_ADDR} \
+                                    --set vault.role=${APP_NAME} \
+                                    --set vault.path=secret/microservice \
+                                    -n production
+                            '''
+                        }
                     }
                 }
             }
@@ -107,8 +133,10 @@ pipeline {
     
     post {
         always {
-            sh 'rm -f /tmp/kubeconfig-*'
-            deleteDir()
+            container('maven') {
+                sh 'rm -f /tmp/kubeconfig-*'
+                deleteDir()
+            }
         }
     }
 } 
