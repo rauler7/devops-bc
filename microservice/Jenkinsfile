@@ -83,13 +83,13 @@ pipeline {
             }
         }
         
-        stage('Deploy to Development') {
+       stage('Deploy to Development') {
             when {
-                expression { 
-                    def branch = sh(script: 'git branch --show-current', returnStdout: true).trim()
-                    return branch == 'develop' || branch == 'development'
+                expression {
+                    return ['develop', 'development'].contains(env.BRANCH_NAME)
                 }
             }
+
             steps {
                 container('docker-client') {
                     script {
