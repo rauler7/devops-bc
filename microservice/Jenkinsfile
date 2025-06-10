@@ -115,6 +115,7 @@ pipeline {
                             }
                             
                             sh '''
+                                set -x # Enable debugging
                                 echo "Installing required tools..."
                                 apk add --no-cache curl jq docker-cli helm kubectl
                                 
