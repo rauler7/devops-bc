@@ -168,7 +168,7 @@ pipeline {
 
                                 echo "Retrieving kubeconfig from Vault..."
                                 KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                    ${VAULT_ADDR}/v1/kubeconfig/kv/development/kubeconfig | jq -r '.data.kubeconfig')
+                                    "${VAULT_ADDR}/v1/kubeconfig/data/development" | jq -r '.data.data.kubeconfig')
 
                                 if [ -z "$KUBECONFIG_CONTENT" ]; then
                                     echo "Error: Kubeconfig content is empty or retrieval failed."
@@ -276,7 +276,7 @@ pipeline {
 
                                 echo "Retrieving kubeconfig from Vault..."
                                 KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                    ${VAULT_ADDR}/v1/kubeconfig/kv/development/kubeconfig | jq -r '.data.kubeconfig')
+                                    "${VAULT_ADDR}/v1/kubeconfig/data/production" | jq -r '.data.data.kubeconfig')
 
                                 if [ -z "$KUBECONFIG_CONTENT" ]; then
                                     echo "Error: Kubeconfig content is empty or retrieval failed."
