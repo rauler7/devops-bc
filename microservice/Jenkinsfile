@@ -88,13 +88,6 @@ pipeline {
         }
         
         stage('Deploy to Development') {
-            when {
-                expression { 
-                    def branch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-                    echo "Checking development deployment condition. Current branch: ${branch}"
-                    return branch == 'develop' || branch == 'development' || branch == 'dev'
-                }
-            }
             steps {
                 container('docker-client') {
                     script {
