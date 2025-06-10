@@ -28,6 +28,13 @@ pipeline {
                     env:
                     - name: DOCKER_HOST
                       value: tcp://localhost:2375
+                    volumeMounts:
+                    - mountPath: /var/run/docker.sock
+                      name: docker-sock
+                  volumes:
+                  - name: docker-sock
+                    hostPath:
+                      path: /var/run/docker.sock
             '''
         }
     }
@@ -75,12 +82,21 @@ pipeline {
         
         stage('Build Docker Image') {
             steps {
-                container('docker-client') {
+                container('deploy-tools') {
                     dir('microservice') {
                         sh '''
+                            # Install Docker CLI
+                            apk add --no-cache docker-cli
+                            
                             # Wait for Docker daemon to be ready
+                            echo "Waiting for Docker daemon..."
                             timeout 30s sh -c 'until docker info; do sleep 1; done'
+                            
+                            echo "Building Docker image..."
                             docker build -t ${APP_NAME}:${BUILD_NUMBER} .
+                            
+                            echo "Docker image built successfully"
+                            docker images | grep ${APP_NAME}
                         '''
                     }
                 }
@@ -91,39 +107,52 @@ pipeline {
             steps {
                 container('deploy-tools') {
                     script {
-                        sh '''
-                            # Install required tools
-                            apk add --no-cache curl jq docker-cli helm kubectl
-                            
-                            # Login to Vault using userpass
-                            VAULT_TOKEN=$(curl -s --request POST \
-                                --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
-                                ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
-                            
-                            export VAULT_TOKEN
-                        '''
-                        
-                        withCredentials([vaultSecret(credentialsId: 'kubeconfig', path: 'kubeconfig/kv/development/kubeconfig')]) {
+                        try {
                             sh '''
-                                echo "$KUBECONFIG" > /tmp/kubeconfig-dev
-                                export KUBECONFIG=/tmp/kubeconfig-dev
+                                echo "Installing required tools..."
+                                apk add --no-cache curl jq docker-cli helm kubectl
                                 
-                                # Verify tools are installed
-                                echo "Checking installed tools:"
-                                helm version
-                                kubectl version --client
+                                echo "Logging into Vault..."
+                                VAULT_TOKEN=$(curl -s --request POST \
+                                    --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
+                                    ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
                                 
-                                # Deploy using Helm with Vault configuration
-                                helm upgrade --install ${APP_NAME} ./helm \
-                                    --set image.repository=${APP_NAME} \
-                                    --set image.tag=${BUILD_NUMBER} \
-                                    --set environment=development \
-                                    --set vault.enabled=true \
-                                    --set vault.addr=${VAULT_ADDR} \
-                                    --set vault.role=${APP_NAME} \
-                                    --set vault.path=secret/microservice \
-                                    -n development
+                                if [ -z "$VAULT_TOKEN" ]; then
+                                    echo "Failed to get Vault token"
+                                    exit 1
+                                fi
+                                
+                                export VAULT_TOKEN
+                                echo "Successfully logged into Vault"
                             '''
+                            
+                            withCredentials([vaultSecret(credentialsId: 'kubeconfig', path: 'kubeconfig/kv/development/kubeconfig')]) {
+                                sh '''
+                                    echo "Setting up kubeconfig..."
+                                    echo "$KUBECONFIG" > /tmp/kubeconfig-dev
+                                    export KUBECONFIG=/tmp/kubeconfig-dev
+                                    
+                                    echo "Verifying tools installation..."
+                                    helm version
+                                    kubectl version --client
+                                    
+                                    echo "Deploying to development..."
+                                    helm upgrade --install ${APP_NAME} ./helm \
+                                        --set image.repository=${APP_NAME} \
+                                        --set image.tag=${BUILD_NUMBER} \
+                                        --set environment=development \
+                                        --set vault.enabled=true \
+                                        --set vault.addr=${VAULT_ADDR} \
+                                        --set vault.role=${APP_NAME} \
+                                        --set vault.path=secret/microservice \
+                                        -n development
+                                    
+                                    echo "Deployment completed successfully"
+                                '''
+                            }
+                        } catch (Exception e) {
+                            echo "Deployment failed: ${e.message}"
+                            throw e
                         }
                     }
                 }
@@ -131,49 +160,55 @@ pipeline {
         }
         
         stage('Deploy to Production') {
-            when {
-                expression { 
-                    def branch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-                    echo "Checking production deployment condition. Current branch: ${branch}"
-                    return branch == 'main' || branch == 'master'
-                }
-            }
             steps {
                 container('deploy-tools') {
                     script {
-                        sh '''
-                            # Install required tools
-                            apk add --no-cache curl jq docker-cli helm kubectl
-                            
-                            # Login to Vault using userpass
-                            VAULT_TOKEN=$(curl -s --request POST \
-                                --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
-                                ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
-                            
-                            export VAULT_TOKEN
-                        '''
-                        
-                        withCredentials([vaultSecret(credentialsId: 'kubeconfig-deployment', path: 'kubeconfig/kv/deployment/kubeconfig')]) {
+                        try {
                             sh '''
-                                echo "$KUBECONFIG" > /tmp/kubeconfig-deploy
-                                export KUBECONFIG=/tmp/kubeconfig-deploy
+                                echo "Installing required tools..."
+                                apk add --no-cache curl jq docker-cli helm kubectl
                                 
-                                # Verify tools are installed
-                                echo "Checking installed tools:"
-                                helm version
-                                kubectl version --client
+                                echo "Logging into Vault..."
+                                VAULT_TOKEN=$(curl -s --request POST \
+                                    --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
+                                    ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
                                 
-                                # Deploy using Helm with Vault configuration
-                                helm upgrade --install ${APP_NAME} ./helm \
-                                    --set image.repository=${APP_NAME} \
-                                    --set image.tag=${BUILD_NUMBER} \
-                                    --set environment=production \
-                                    --set vault.enabled=true \
-                                    --set vault.addr=${VAULT_ADDR} \
-                                    --set vault.role=${APP_NAME} \
-                                    --set vault.path=secret/microservice \
-                                    -n production
+                                if [ -z "$VAULT_TOKEN" ]; then
+                                    echo "Failed to get Vault token"
+                                    exit 1
+                                fi
+                                
+                                export VAULT_TOKEN
+                                echo "Successfully logged into Vault"
                             '''
+                            
+                            withCredentials([vaultSecret(credentialsId: 'kubeconfig', path: 'kubeconfig/kv/deployment/kubeconfig')]) {
+                                sh '''
+                                    echo "Setting up kubeconfig..."
+                                    echo "$KUBECONFIG" > /tmp/kubeconfig-deploy
+                                    export KUBECONFIG=/tmp/kubeconfig-deploy
+                                    
+                                    echo "Verifying tools installation..."
+                                    helm version
+                                    kubectl version --client
+                                    
+                                    echo "Deploying to production..."
+                                    helm upgrade --install ${APP_NAME} ./helm \
+                                        --set image.repository=${APP_NAME} \
+                                        --set image.tag=${BUILD_NUMBER} \
+                                        --set environment=production \
+                                        --set vault.enabled=true \
+                                        --set vault.addr=${VAULT_ADDR} \
+                                        --set vault.role=${APP_NAME} \
+                                        --set vault.path=secret/microservice \
+                                        -n production
+                                    
+                                    echo "Deployment completed successfully"
+                                '''
+                            }
+                        } catch (Exception e) {
+                            echo "Deployment failed: ${e.message}"
+                            throw e
                         }
                     }
                 }
@@ -183,10 +218,13 @@ pipeline {
     
     post {
         always {
-            container('docker-client') {
+            container('deploy-tools') {
                 sh 'rm -f /tmp/kubeconfig-*'
                 deleteDir()
             }
+        }
+        failure {
+            echo "Pipeline failed. Check the logs for details."
         }
     }
 } 
