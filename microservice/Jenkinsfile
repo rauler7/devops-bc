@@ -137,7 +137,7 @@ pipeline {
                                 
                                 # Perform Vault login with better error handling
                                 VAULT_RESPONSE=$(curl -s -w "\n%{http_code}" --request POST \
-                                    --data "{\"password\": \"${VAULT_PASSWORD}\"}" \
+                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}'
                                     ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME})
                                 
                                 HTTP_CODE=$(echo "$VAULT_RESPONSE" | tail -n1)
@@ -153,7 +153,7 @@ pipeline {
                                 
                                 VAULT_TOKEN=$(curl -s --request POST \
                                     --header "Content-Type: application/json" \
-                                    --data "{\"password\": \"${VAULT_PASSWORD}\"}" \
+                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}'
                                     ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
 
                                 
@@ -246,7 +246,7 @@ pipeline {
                                 
                                 # Perform Vault login with better error handling
                                 VAULT_RESPONSE=$(curl -s -w "\n%{http_code}" --request POST \
-                                    --data "{\"password\": \"${VAULT_PASSWORD}\"}" \
+                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}'
                                     ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME})
                                 
                                 HTTP_CODE=$(echo "$VAULT_RESPONSE" | tail -n1)
