@@ -179,7 +179,7 @@ pipeline {
                                     echo "Error: Failed to extract kubeconfig from Vault response"
                                     echo "Trying alternative path..."
                                     KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                        "${VAULT_ADDR}/v1/secret/data/development/kubeconfig" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                        "${VAULT_ADDR}/v1/kubeconfig/data/development" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
                                 fi
 
                                 if [ -z "$KUBECONFIG_CONTENT" ]; then
@@ -299,7 +299,7 @@ pipeline {
                                     echo "Error: Failed to extract kubeconfig from Vault response"
                                     echo "Trying alternative path..."
                                     KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                        "${VAULT_ADDR}/v1/secret/data/production/kubeconfig" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                        "${VAULT_ADDR}/v1/kubeconfig/data/development" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
                                 fi
 
                                 if [ -z "$KUBECONFIG_CONTENT" ]; then
@@ -341,7 +341,20 @@ pipeline {
     post {
         always {
             container('deploy-tools') {
-                sh 'rm -f /tmp/kubeconfig-*'
+                sh '''
+                    echo "Cleaning up Docker resources..."
+                    # Remove the specific image we built
+                    docker rmi ${APP_NAME}:${BUILD_NUMBER} || true
+                    
+                    # Remove any dangling images
+                    docker image prune -f
+                    
+                    # Remove any stopped containers
+                    docker container prune -f
+                    
+                    # Clean up kubeconfig files
+                    rm -f /tmp/kubeconfig-*
+                '''
                 deleteDir()
             }
         }
