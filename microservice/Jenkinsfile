@@ -108,13 +108,19 @@ pipeline {
                 container('deploy-tools') {
                     script {
                         try {
+                            // First, verify Vault credentials are available
+                            echo "Checking Vault credentials..."
+                            if (!env.VAULT_USERNAME || !env.VAULT_PASSWORD) {
+                                error "Vault credentials are not properly set"
+                            }
+                            
                             sh '''
                                 echo "Installing required tools..."
                                 apk add --no-cache curl jq docker-cli helm kubectl
                                 
                                 echo "Logging into Vault..."
                                 VAULT_TOKEN=$(curl -s --request POST \
-                                    --data "{\\"password\\": \\"${VAULT_PASSWORD}\\"}" \
+                                    --data "{\"password\": \"${VAULT_PASSWORD}\"}" \
                                     ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
                                 
                                 if [ -z "$VAULT_TOKEN" ]; then
@@ -124,34 +130,46 @@ pipeline {
                                 
                                 export VAULT_TOKEN
                                 echo "Successfully logged into Vault"
+
+                                echo "Retrieving kubeconfig from Vault..."
+                                KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                    ${VAULT_ADDR}/v1/kubeconfig/kv/development/kubeconfig | jq -r '.data.kubeconfig')
+
+                                if [ -z "$KUBECONFIG_CONTENT" ]; then
+                                    echo "Error: Kubeconfig content is empty or retrieval failed."
+                                    exit 1
+                                fi
+                                
+                                echo "Setting up kubeconfig..."
+                                echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig-dev
+                                export KUBECONFIG=/tmp/kubeconfig-dev
+                                
+                                echo "Verifying kubeconfig file size..."
+                                if [ ! -s /tmp/kubeconfig-dev ]; then
+                                    echo "Error: kubeconfig file is empty or not created correctly."
+                                    exit 1
+                                fi
+                                
+                                echo "Verifying tools installation..."
+                                helm version
+                                kubectl version --client
+                                
+                                echo "Deploying to development..."
+                                helm upgrade --install ${APP_NAME} ./helm \
+                                    --set image.repository=${APP_NAME} \
+                                    --set image.tag=${BUILD_NUMBER} \
+                                    --set environment=development \
+                                    --set vault.enabled=true \
+                                    --set vault.addr=${VAULT_ADDR} \
+                                    --set vault.role=${APP_NAME} \
+                                    --set vault.path=secret/microservice \
+                                    -n development
+                                
+                                echo "Deployment completed successfully"
                             '''
-                            
-                            withCredentials([vaultSecret(credentialsId: 'kubeconfig', path: 'kubeconfig/kv/development/kubeconfig')]) {
-                                sh '''
-                                    echo "Setting up kubeconfig..."
-                                    echo "$KUBECONFIG" > /tmp/kubeconfig-dev
-                                    export KUBECONFIG=/tmp/kubeconfig-dev
-                                    
-                                    echo "Verifying tools installation..."
-                                    helm version
-                                    kubectl version --client
-                                    
-                                    echo "Deploying to development..."
-                                    helm upgrade --install ${APP_NAME} ./helm \
-                                        --set image.repository=${APP_NAME} \
-                                        --set image.tag=${BUILD_NUMBER} \
-                                        --set environment=development \
-                                        --set vault.enabled=true \
-                                        --set vault.addr=${VAULT_ADDR} \
-                                        --set vault.role=${APP_NAME} \
-                                        --set vault.path=secret/microservice \
-                                        -n development
-                                    
-                                    echo "Deployment completed successfully"
-                                '''
-                            }
                         } catch (Exception e) {
                             echo "Deployment failed: ${e.message}"
+                            echo "Stack trace: ${e.stackTrace}"
                             throw e
                         }
                     }
