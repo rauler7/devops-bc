@@ -20,15 +20,7 @@ pipeline {
                       value: ""
                     - name: DOCKER_HOST
                       value: tcp://localhost:2375
-                  - name: docker-client
-                    image: docker:20.10.24
-                    command:
-                    - cat
-                    tty: true
-                    env:
-                    - name: DOCKER_HOST
-                      value: tcp://localhost:2375
-                  - name: vault-client
+                  - name: deploy-tools
                     image: alpine:3.19
                     command:
                     - cat
@@ -97,11 +89,11 @@ pipeline {
         
         stage('Deploy to Development') {
             steps {
-                container('vault-client') {
+                container('deploy-tools') {
                     script {
-                        // Login to Vault using userpass
                         sh '''
-                            apk add --no-cache curl jq
+                            # Install required tools
+                            apk add --no-cache curl jq docker-cli helm kubectl
                             
                             # Login to Vault using userpass
                             VAULT_TOKEN=$(curl -s --request POST \
@@ -111,10 +103,15 @@ pipeline {
                             export VAULT_TOKEN
                         '''
                         
-                        withCredentials([vaultSecret(credentialsId: 'kubeconfig-development', path: 'kubeconfig/kv/development/kubeconfig')]) {
+                        withCredentials([vaultSecret(credentialsId: 'kubeconfig', path: 'kubeconfig/kv/development/kubeconfig')]) {
                             sh '''
                                 echo "$KUBECONFIG" > /tmp/kubeconfig-dev
                                 export KUBECONFIG=/tmp/kubeconfig-dev
+                                
+                                # Verify tools are installed
+                                echo "Checking installed tools:"
+                                helm version
+                                kubectl version --client
                                 
                                 # Deploy using Helm with Vault configuration
                                 helm upgrade --install ${APP_NAME} ./helm \
@@ -142,11 +139,11 @@ pipeline {
                 }
             }
             steps {
-                container('vault-client') {
+                container('deploy-tools') {
                     script {
-                        // Install required tools
                         sh '''
-                            apk add --no-cache curl jq
+                            # Install required tools
+                            apk add --no-cache curl jq docker-cli helm kubectl
                             
                             # Login to Vault using userpass
                             VAULT_TOKEN=$(curl -s --request POST \
@@ -160,6 +157,11 @@ pipeline {
                             sh '''
                                 echo "$KUBECONFIG" > /tmp/kubeconfig-deploy
                                 export KUBECONFIG=/tmp/kubeconfig-deploy
+                                
+                                # Verify tools are installed
+                                echo "Checking installed tools:"
+                                helm version
+                                kubectl version --client
                                 
                                 # Deploy using Helm with Vault configuration
                                 helm upgrade --install ${APP_NAME} ./helm \
