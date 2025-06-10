@@ -151,7 +151,11 @@ pipeline {
                                     exit 1
                                 fi
                                 
-                                VAULT_TOKEN=$(echo "$VAULT_BODY" | jq -r '.auth.client_token')
+                                VAULT_TOKEN=$(curl -s --request POST \
+                                    --header "Content-Type: application/json" \
+                                    --data "{\"password\": \"${VAULT_PASSWORD}\"}" \
+                                    ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
+
                                 
                                 if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
                                     echo "Failed to extract Vault token from response"
