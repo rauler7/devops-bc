@@ -167,8 +167,20 @@ pipeline {
                                 echo "Successfully logged into Vault"
 
                                 echo "Retrieving kubeconfig from Vault..."
-                                KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                    "${VAULT_ADDR}/v1/kubeconfig/data/development" | jq -r '.data.data.kubeconfig')
+                                # Debug the Vault response
+                                VAULT_RESPONSE=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                    "${VAULT_ADDR}/v1/kubeconfig/data/development")
+                                echo "Raw Vault response: ${VAULT_RESPONSE}"
+                                
+                                # Try different path structures
+                                KUBECONFIG_CONTENT=$(echo "${VAULT_RESPONSE}" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                
+                                if [ -z "$KUBECONFIG_CONTENT" ] || [ "$KUBECONFIG_CONTENT" = "null" ]; then
+                                    echo "Error: Failed to extract kubeconfig from Vault response"
+                                    echo "Trying alternative path..."
+                                    KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                        "${VAULT_ADDR}/v1/secret/data/development/kubeconfig" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                fi
 
                                 if [ -z "$KUBECONFIG_CONTENT" ]; then
                                     echo "Error: Kubeconfig content is empty or retrieval failed."
@@ -275,8 +287,20 @@ pipeline {
                                 echo "Successfully logged into Vault"
 
                                 echo "Retrieving kubeconfig from Vault..."
-                                KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                    "${VAULT_ADDR}/v1/kubeconfig/data/production" | jq -r '.data.data.kubeconfig')
+                                # Debug the Vault response
+                                VAULT_RESPONSE=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                    "${VAULT_ADDR}/v1/kubeconfig/data/production")
+                                echo "Raw Vault response: ${VAULT_RESPONSE}"
+                                
+                                # Try different path structures
+                                KUBECONFIG_CONTENT=$(echo "${VAULT_RESPONSE}" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                
+                                if [ -z "$KUBECONFIG_CONTENT" ] || [ "$KUBECONFIG_CONTENT" = "null" ]; then
+                                    echo "Error: Failed to extract kubeconfig from Vault response"
+                                    echo "Trying alternative path..."
+                                    KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                        "${VAULT_ADDR}/v1/secret/data/production/kubeconfig" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                fi
 
                                 if [ -z "$KUBECONFIG_CONTENT" ]; then
                                     echo "Error: Kubeconfig content is empty or retrieval failed."
