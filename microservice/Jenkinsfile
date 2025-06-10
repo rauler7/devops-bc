@@ -45,7 +45,11 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-                sh 'git branch --show-current'
+                sh '''
+                    echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
+                    echo "All branches:"
+                    git branch -a
+                '''
             }
         }
         
@@ -83,13 +87,14 @@ pipeline {
             }
         }
         
-       stage('Deploy to Development') {
+        stage('Deploy to Development') {
             when {
-                expression {
-                    return ['develop', 'development'].contains(env.BRANCH_NAME)
+                expression { 
+                    def branch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    echo "Checking development deployment condition. Current branch: ${branch}"
+                    return branch == 'develop' || branch == 'development' || branch == 'dev'
                 }
             }
-
             steps {
                 container('docker-client') {
                     script {
@@ -126,7 +131,11 @@ pipeline {
         
         stage('Deploy to Production') {
             when {
-                branch 'main'
+                expression { 
+                    def branch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    echo "Checking production deployment condition. Current branch: ${branch}"
+                    return branch == 'main' || branch == 'master'
+                }
             }
             steps {
                 container('docker-client') {
