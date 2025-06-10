@@ -119,12 +119,18 @@ pipeline {
                                 apk add --no-cache curl jq docker-cli helm kubectl
                                 
                                 echo "Logging into Vault..."
-                                VAULT_TOKEN=$(curl -s --request POST \
+                                VAULT_LOGIN_RESPONSE=$(curl -s --request POST \
                                     --data "{\"password\": \"${VAULT_PASSWORD}\"}" \
-                                    ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
+                                    ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME})
                                 
-                                if [ -z "$VAULT_TOKEN" ]; then
-                                    echo "Failed to get Vault token"
+                                echo "Vault Login Response: ${VAULT_LOGIN_RESPONSE}"
+                                
+                                VAULT_TOKEN=$(echo "${VAULT_LOGIN_RESPONSE}" | jq -r '.auth.client_token')
+                                
+                                echo "Extracted VAULT_TOKEN: ${VAULT_TOKEN}"
+
+                                if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
+                                    echo "Failed to get Vault token or token is null"
                                     exit 1
                                 fi
                                 
@@ -132,11 +138,17 @@ pipeline {
                                 echo "Successfully logged into Vault"
 
                                 echo "Retrieving kubeconfig from Vault..."
-                                KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                    ${VAULT_ADDR}/v1/kubeconfig/kv/development/kubeconfig | jq -r '.data.kubeconfig')
+                                KUBECONFIG_CONTENT_RAW=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                    ${VAULT_ADDR}/v1/secrets/kubeconfig/kv/development)
+                                
+                                echo "Kubeconfig Raw Response: ${KUBECONFIG_CONTENT_RAW}"
 
-                                if [ -z "$KUBECONFIG_CONTENT" ]; then
-                                    echo "Error: Kubeconfig content is empty or retrieval failed."
+                                KUBECONFIG_CONTENT=$(echo "${KUBECONFIG_CONTENT_RAW}" | jq -r '.data.data.kubeconfig')
+
+                                echo "Extracted KUBECONFIG_CONTENT: ${KUBECONFIG_CONTENT}"
+
+                                if [ -z "$KUBECONFIG_CONTENT" ] || [ "$KUBECONFIG_CONTENT" = "null" ]; then
+                                    echo "Error: Kubeconfig content is empty or null after extraction."
                                     exit 1
                                 fi
                                 
