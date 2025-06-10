@@ -137,8 +137,8 @@ pipeline {
                                 
                                 # Perform Vault login with better error handling
                                 VAULT_RESPONSE=$(curl -s -w "\n%{http_code}" --request POST \
-                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}'
-                                    ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME})
+                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}' \
+                                    "${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}")
                                 
                                 HTTP_CODE=$(echo "$VAULT_RESPONSE" | tail -n1)
                                 VAULT_BODY=$(echo "$VAULT_RESPONSE" | sed '$d')
@@ -153,8 +153,8 @@ pipeline {
                                 
                                 VAULT_TOKEN=$(curl -s --request POST \
                                     --header "Content-Type: application/json" \
-                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}'
-                                    ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME} | jq -r '.auth.client_token')
+                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}' \
+                                    "${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}" | jq -r '.auth.client_token')
 
                                 
                                 if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
@@ -246,8 +246,8 @@ pipeline {
                                 
                                 # Perform Vault login with better error handling
                                 VAULT_RESPONSE=$(curl -s -w "\n%{http_code}" --request POST \
-                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}'
-                                    ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME})
+                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}' \
+                                    "${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}")
                                 
                                 HTTP_CODE=$(echo "$VAULT_RESPONSE" | tail -n1)
                                 VAULT_BODY=$(echo "$VAULT_RESPONSE" | sed '$d')
@@ -260,7 +260,10 @@ pipeline {
                                     exit 1
                                 fi
                                 
-                                VAULT_TOKEN=$(echo "$VAULT_BODY" | jq -r '.auth.client_token')
+                                VAULT_TOKEN=$(curl -s --request POST \
+                                    --header "Content-Type: application/json" \
+                                    --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}' \
+                                    "${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}" | jq -r '.auth.client_token')
                                 
                                 if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
                                     echo "Failed to extract Vault token from response"
