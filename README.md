@@ -116,7 +116,6 @@ terraform apply
 
 - Access Jenkins UI at `http://localhost:8080`
 - Configure Vault credentials
-- Set up Kubernetes credentials
 - Configure pipeline
 
 #### Jenkins Credentials Setup
@@ -136,6 +135,8 @@ terraform apply
    - ID: `vault-token`
    - Secret: Your Vault token
    - Description: "Vault token for secrets access"
+![Jenkins creds](https://github.com/user-attachments/assets/186189da-10fd-4951-8cc2-843143ec89e8)
+
 
 #### Multibranch Pipeline Configuration
 
@@ -147,6 +148,9 @@ terraform apply
    - Configure credentials using the previously created GitHub credentials
    - Set build configuration mode to "by Jenkinsfile"
    - Enable "Discover branches" and "Discover pull requests"
+![mb-pipeline-conf](https://github.com/user-attachments/assets/ba7e1057-108f-4225-8a0e-69ca1b7f5ab2)
+![mb-pipeline creation](https://github.com/user-attachments/assets/1db92824-0590-45f2-8a62-fbf57cfa0565)
+
 
 2. **Pipeline Stages**
    ```groovy
@@ -232,22 +236,40 @@ terraform apply
 1. **Jenkins Policy**
 
    ```hcl
-   path "secret/data/jenkins/*" {
-     capabilities = ["read", "list"]
-   }
+       path "secret/data/jenkins/*" {
+          capabilities = ["read", "list"]
+        }
+    
+        path "kubeconfig/data/*" {
+          capabilities = ["read", "list"]
+        }
+    
+        # Grant read access to the specific kubeconfig path
+        path "kubeconfig/data/development/kubeconfig" {
+          capabilities = ["read"]
+        }
+    
+        # Grant read access to the microservice secrets path
+        path "secret/microservice/*" {
+          capabilities = ["read"]
+        }
+    
+        # Allow listing secrets in the microservice path (optional, but helpful for debugging)
+        path "secret/microservice" {
+          capabilities = ["list"]
+        }
    ```
 
-2. **Microservice Secrets**
+2. **Deployment and microservice Secrets**
    - Create a new secret in Vault:
-     ```bash
-     vault kv put secret/microservice/config \
-       db_password="your-db-password" \
-       api_key="your-api-key"
-     ```
-   - Configure Kubernetes authentication for the microservice
-   - Create a policy for the microservice service account
+   - Configure Kubernetes authentication for the pipeline
+   - Create a policy for jenkins service account
+    ![secrets](https://github.com/user-attachments/assets/45d5666f-2a2b-47a5-b923-d76a08d6cdb6)
 
-[Screenshots to be added here]
+
+3. **Authentication Methods**
+![auth](https://github.com/user-attachments/assets/5857e665-897d-45da-9f16-96aaf2a69a66)
+
 
 ### 4. Microservice Deployment
 
