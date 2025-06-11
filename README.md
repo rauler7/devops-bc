@@ -119,12 +119,135 @@ terraform apply
 - Set up Kubernetes credentials
 - Configure pipeline
 
+#### Jenkins Credentials Setup
+
+1. **GitHub Credentials**
+
+   - Navigate to Jenkins > Manage Jenkins > Credentials > System > Global credentials
+   - Add new credentials with type "Username with password"
+   - ID: `github-credentials`
+   - Username: Your GitHub username
+   - Password: Your GitHub personal access token
+   - Description: "GitHub credentials for repository access"
+
+2. **Vault Credentials**
+   - Navigate to Jenkins > Manage Jenkins > Credentials > System > Global credentials
+   - Add new credentials with type "Secret text"
+   - ID: `vault-token`
+   - Secret: Your Vault token
+   - Description: "Vault token for secrets access"
+
+#### Multibranch Pipeline Configuration
+
+1. **Pipeline Setup**
+
+   - Create a new Multibranch Pipeline in Jenkins
+   - Configure source as GitHub repository
+   - Set branch source to your repository URL
+   - Configure credentials using the previously created GitHub credentials
+   - Set build configuration mode to "by Jenkinsfile"
+   - Enable "Discover branches" and "Discover pull requests"
+
+2. **Pipeline Stages**
+   ```groovy
+   pipeline {
+       agent any
+       stages {
+           stage('Build') {
+               steps {
+                   // Maven build steps
+               }
+           }
+           stage('Test') {
+               steps {
+                   // Unit and integration tests
+               }
+           }
+           stage('Security Scan') {
+               steps {
+                   // Security scanning steps
+               }
+           }
+           stage('Deploy') {
+               steps {
+                   // Kubernetes deployment steps
+               }
+           }
+       }
+   }
+   ```
+
+#### Kubelet Audit Configuration
+
+1. **Audit Policy Setup**
+
+   - Configure audit policy in `/etc/kubernetes/audit/audit-policy.yaml`:
+
+   ```yaml
+   apiVersion: audit.k8s.io/v1
+   kind: Policy
+   rules:
+    - level: Metadata
+      namespaces: ["kube-system"]
+      verbs: ["get", "list", "watch"]
+    - level: RequestResponse
+      resources:
+       - group: ""
+         resources: ["secrets", "configmaps"]
+   ```
+
+2. **Audit Logging**
+
+   - Audit logs are stored in `/var/log/kubernetes/audit/`
+   - Log format includes:
+     - Timestamp
+     - Request ID
+     - User information
+     - Resource details
+     - Response status
+     - Request/Response bodies for sensitive operations
+
+3. **Log Analysis**
+   - Use the audit-events.sh script to analyze audit logs:
+   ```bash
+   ./scripts/audit-events.sh
+   ```
+   - Script provides:
+     - Failed authentication attempts
+     - Unauthorized access attempts
+     - Changes to sensitive resources
+     - Pod creation/deletion events
+
+[Screenshots to be added here]
+
 ### 3. Vault Setup
 
 - Initialize Vault
 - Configure Kubernetes authentication
 - Set up secrets engine
 - Create policies and roles
+
+#### Vault Configuration Details
+
+1. **Jenkins Policy**
+
+   ```hcl
+   path "secret/data/jenkins/*" {
+     capabilities = ["read", "list"]
+   }
+   ```
+
+2. **Microservice Secrets**
+   - Create a new secret in Vault:
+     ```bash
+     vault kv put secret/microservice/config \
+       db_password="your-db-password" \
+       api_key="your-api-key"
+     ```
+   - Configure Kubernetes authentication for the microservice
+   - Create a policy for the microservice service account
+
+[Screenshots to be added here]
 
 ### 4. Microservice Deployment
 
