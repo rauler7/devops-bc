@@ -13,20 +13,20 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}
-      {{- if .Values.vault.enabled }}
+{{- if .Values.vault.enabled }}
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/agent-inject-status: "update"
         vault.hashicorp.com/role: {{ .Values.vault.role }}
         vault.hashicorp.com/agent-inject-secret-app-config.json: {{ .Values.vault.path }}
         vault.hashicorp.com/agent-inject-template-app-config.json: |
-          {{ "{{" }} with secret "{{ .Values.vault.path }}" {{ "}}" }}
+          {{- with secret (printf "%s" .Values.vault.path) -}}
           {
-            "app_config": "{{ "{{" }} .Data.data.app_config {{ "}}" }}",
-            "app_secret": "{{ "{{" }} .Data.data.app_secret {{ "}}" }}"
+            "username": "{{ .Data.data.username }}",
+            "password": "{{ .Data.data.password }}"
           }
-          {{ "{{" }} end {{ "}}" }}
-      {{- end }}
+          {{- end }}
+{{- end }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
@@ -40,14 +40,14 @@ spec:
             - name: ENVIRONMENT
               value: {{ .Values.environment | quote }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          {{- if .Values.vault.enabled }}
+{{ toYaml .Values.resources | nindent 12 }}
+{{- if .Values.vault.enabled }}
           volumeMounts:
             - name: config-volume
               mountPath: /app/config
-          {{- end }}
-      {{- if .Values.vault.enabled }}
+{{- end }}
       volumes:
+{{- if .Values.vault.enabled }}
         - name: config-volume
           emptyDir: {}
-      {{- end }} 
+{{- end }}

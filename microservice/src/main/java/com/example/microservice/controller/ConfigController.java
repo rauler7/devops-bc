@@ -20,17 +20,11 @@ public class ConfigController {
         this.appConfig = appConfig;
     }
 
-    @GetMapping("/app-config")
-    public Map<String, String> getAppConfig() {
+    @GetMapping("/credentials")
+    public Map<String, String> getCredentials() {
         Map<String, String> response = new HashMap<>();
-        response.put("app_config", appConfig.getAppConfig());
+        response.put("username", appConfig.getUsername());
+        response.put("password", appConfig.getPassword());
         return response;
     }
-
-    @GetMapping("/app-secret")
-    public Map<String, String> getAppSecret() {
-        Map<String, String> response = new HashMap<>();
-        response.put("app_secret", appConfig.getAppSecret());
-        return response;
-    }
-} 
+}

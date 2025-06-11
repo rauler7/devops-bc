@@ -1,5 +1,10 @@
 replicaCount: 2
 
+# Namespace configuration
+namespace:
+  create: true
+  name: ""
+
 image:
   repository: microservice
   tag: latest
@@ -12,19 +17,19 @@ service:
 vault:
   enabled: true
   role: microservice
-  path: secret/microservice
+  path: secret/data/microservice
   agent:
     enabled: true
     inject: true
     configMap: vault-agent-config
     template:
       - name: app-config
-        path: secret/microservice
+        path: secret/data/microservice
         template: |
-          {{ "{{" }} with secret "secret/microservice" {{ "}}" }}
+          {{ "{{" }} with secret "secret/data/microservice" {{ "}}" }}
           {
-            "app_config": "{{ "{{" }} .Data.data.app_config {{ "}}" }}",
-            "app_secret": "{{ "{{" }} .Data.data.app_secret {{ "}}" }}"
+            "username": "{{ "{{" }} .Data.data.username {{ "}}" }}",
+            "password": "{{ "{{" }} .Data.data.password {{ "}}" }}"
           }
           {{ "{{" }} end {{ "}}" }}
 
@@ -34,7 +39,8 @@ env:
   APP_SECRET: ""
 
 # Environment configuration
-environment: development
+# This should be set via --set environment=<env> when deploying
+environment: ""
 
 resources:
   limits:

@@ -12,27 +12,27 @@ import java.util.Map;
 
 @Configuration
 public class AppConfig {
-    
+
     @Value("classpath:/vault/secrets/app-config.json")
     private Resource vaultConfigFile;
-    
+
     private Map<String, String> config = new HashMap<>();
-    
+
     @PostConstruct
     public void init() throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         Map<String, Object> vaultConfig = mapper.readValue(vaultConfigFile.getInputStream(), Map.class);
-        
+
         // Extract values from the Vault JSON
-        config.put("app_config", (String) vaultConfig.get("app_config"));
-        config.put("app_secret", (String) vaultConfig.get("app_secret"));
+        config.put("username", (String) vaultConfig.get("username"));
+        config.put("password", (String) vaultConfig.get("password"));
     }
-    
-    public String getAppConfig() {
-        return config.get("app_config");
+
+    public String getUsername() {
+        return config.get("username");
     }
-    
-    public String getAppSecret() {
-        return config.get("app_secret");
+
+    public String getPassword() {
+        return config.get("password");
     }
-} 
+}

@@ -38,7 +38,7 @@ pipeline {
             '''
         }
     }
-    
+
     environment {
         VAULT_ADDR = 'http://vault.vault.svc.cluster.local:8200'
         VAULT_USERNAME = credentials('vault-username')
@@ -47,7 +47,7 @@ pipeline {
         JAVA_HOME = '/opt/java/openjdk'
         DOCKER_HOST = 'tcp://localhost:2375'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
@@ -59,7 +59,7 @@ pipeline {
                 '''
             }
         }
-        
+
         stage('Build') {
             steps {
                 container('maven') {
@@ -69,7 +69,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Test') {
             steps {
                 container('maven') {
@@ -79,7 +79,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Build Docker Image') {
             steps {
                 container('deploy-tools') {
@@ -87,14 +87,14 @@ pipeline {
                         sh '''
                             # Install Docker CLI
                             apk add --no-cache docker-cli
-                            
+
                             # Wait for Docker daemon to be ready
                             echo "Waiting for Docker daemon..."
                             timeout 30s sh -c 'until docker info; do sleep 1; done'
-                            
+
                             echo "Building Docker image..."
                             docker build -t ${APP_NAME}:${BUILD_NUMBER} .
-                            
+
                             echo "Docker image built successfully"
                             docker images | grep ${APP_NAME}
                         '''
@@ -102,7 +102,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy to Development') {
             steps {
                 container('deploy-tools') {
@@ -112,12 +112,12 @@ pipeline {
                             if (!env.VAULT_USERNAME || !env.VAULT_PASSWORD) {
                                 error "Vault credentials are not properly set"
                             }
-                            
+
                             sh '''
                                 set -x # Enable debugging
                                 echo "Installing required tools..."
                                 apk add --no-cache curl jq docker-cli helm kubectl
-                                
+
                                 # Debug environment variables (masked for security)
                                 echo "Checking Vault environment variables..."
                                 if [ -z "${VAULT_USERNAME}" ]; then
@@ -130,39 +130,38 @@ pipeline {
                                 fi
                                 echo "VAULT_USERNAME is set"
                                 echo "VAULT_PASSWORD is set"
-                                
+
                                 echo "Logging into Vault..."
                                 # Debug the curl command (without sensitive data)
                                 echo "Attempting Vault login to: ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}"
-                                
+
                                 # Perform Vault login with better error handling
                                 VAULT_RESPONSE=$(curl -s -w "\n%{http_code}" --request POST \
                                     --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}' \
                                     "${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}")
-                                
+
                                 HTTP_CODE=$(echo "$VAULT_RESPONSE" | tail -n1)
                                 VAULT_BODY=$(echo "$VAULT_RESPONSE" | sed '$d')
-                                
+
                                 echo "Vault response HTTP code: ${HTTP_CODE}"
-                                
+
                                 if [ "$HTTP_CODE" != "200" ]; then
                                     echo "Vault login failed with HTTP code: ${HTTP_CODE}"
                                     echo "Response body: ${VAULT_BODY}"
                                     exit 1
                                 fi
-                                
+
                                 VAULT_TOKEN=$(curl -s --request POST \
                                     --header "Content-Type: application/json" \
                                     --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}' \
                                     "${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}" | jq -r '.auth.client_token')
 
-                                
                                 if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
                                     echo "Failed to extract Vault token from response"
                                     echo "Response body: ${VAULT_BODY}"
                                     exit 1
                                 fi
-                                
+
                                 export VAULT_TOKEN
                                 echo "Successfully logged into Vault"
 
@@ -171,10 +170,10 @@ pipeline {
                                 VAULT_RESPONSE=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
                                     "${VAULT_ADDR}/v1/kubeconfig/data/development")
                                 echo "Raw Vault response: ${VAULT_RESPONSE}"
-                                
+
                                 # Try different path structures and decode base64
                                 KUBECONFIG_CONTENT=$(echo "${VAULT_RESPONSE}" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig' | base64 -d)
-                                
+
                                 if [ -z "$KUBECONFIG_CONTENT" ] || [ "$KUBECONFIG_CONTENT" = "null" ]; then
                                     echo "Error: Failed to extract kubeconfig from Vault response"
                                     echo "Trying alternative path..."
@@ -186,36 +185,55 @@ pipeline {
                                     echo "Error: Kubeconfig content is empty or retrieval failed."
                                     exit 1
                                 fi
-                                
+
                                 echo "Setting up kubeconfig..."
                                 echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig-dev
                                 chmod 600 /tmp/kubeconfig-dev
-                                
+
                                 # Update the server URL to use the Kubernetes API server service name
                                 sed -i 's|server: https://127.0.0.1:[0-9]*|server: https://kubernetes.default.svc.cluster.local:443|g' /tmp/kubeconfig-dev
-                                
+
                                 export KUBECONFIG=/tmp/kubeconfig-dev
-                                
+
                                 echo "Verifying kubeconfig file size..."
                                 if [ ! -s /tmp/kubeconfig-dev ]; then
                                     echo "Error: kubeconfig file is empty or not created correctly."
                                     exit 1
                                 fi
-                                
+
                                 echo "Verifying tools installation..."
                                 helm version
                                 kubectl version --client
-                                
+
                                 echo "Deploying to development..."
                                 # Change to the microservice directory where the helm chart is located
                                 cd microservice
-                                
+
                                 # Verify helm chart exists
                                 if [ ! -d "./helm" ]; then
                                     echo "Error: Helm chart directory not found at ./helm"
                                     exit 1
                                 fi
-                                
+
+                                # Create microservice namespace if it doesn't exist
+                                kubectl get namespace microservice || kubectl create namespace microservice
+
+                                # Verify Vault secrets exist before deployment
+                                echo "Verifying Vault secrets..."
+                                VAULT_SECRET_RESPONSE=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                    "${VAULT_ADDR}/v1/secret/data/microservice")
+
+                                if [ $? -ne 0 ] || [ -z "$VAULT_SECRET_RESPONSE" ]; then
+                                    echo "Error: Failed to verify Vault secrets"
+                                    exit 1
+                                fi
+
+                                # Check if secrets exist in the response
+                                if ! echo "$VAULT_SECRET_RESPONSE" | jq -e '.data.data' > /dev/null; then
+                                    echo "Error: Required secrets not found in Vault at path secret/data/microservice"
+                                    exit 1
+                                fi
+
                                 helm upgrade --install ${APP_NAME} ./helm \
                                     --set image.repository=${APP_NAME} \
                                     --set image.tag=${BUILD_NUMBER} \
@@ -223,9 +241,23 @@ pipeline {
                                     --set vault.enabled=true \
                                     --set vault.addr=${VAULT_ADDR} \
                                     --set vault.role=${APP_NAME} \
-                                    --set vault.path=secret/microservice \
-                                    -n development
-                                
+                                    --set vault.path=secret/data/microservice \
+                                    -n microservice
+
+                                # Verify deployment and secret injection
+                                echo "Verifying deployment..."
+                                kubectl rollout status deployment/${APP_NAME} -n microservice --timeout=300s
+
+                                # Check if pods are running and secrets are mounted
+                                POD_NAME=$(kubectl get pods -n microservice -l app=${APP_NAME} -o jsonpath="{.items[0].metadata.name}")
+                                if [ -n "$POD_NAME" ]; then
+                                    echo "Checking secret injection in pod ${POD_NAME}..."
+                                    kubectl exec -n microservice ${POD_NAME} -- ls -l /vault/secrets/app-config || {
+                                        echo "Error: Secrets not properly injected into pod"
+                                        exit 1
+                                    }
+                                fi
+
                                 echo "Deployment completed successfully"
                             '''
                         } catch (Exception e) {
@@ -237,7 +269,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy to Production') {
             steps {
                 container('deploy-tools') {
@@ -247,12 +279,12 @@ pipeline {
                             if (!env.VAULT_USERNAME || !env.VAULT_PASSWORD) {
                                 error "Vault credentials are not properly set"
                             }
-                            
+
                             sh '''
                                 set -x # Enable debugging
                                 echo "Installing required tools..."
                                 apk add --no-cache curl jq docker-cli helm kubectl
-                                
+
                                 # Debug environment variables (masked for security)
                                 echo "Checking Vault environment variables..."
                                 if [ -z "${VAULT_USERNAME}" ]; then
@@ -265,38 +297,38 @@ pipeline {
                                 fi
                                 echo "VAULT_USERNAME is set"
                                 echo "VAULT_PASSWORD is set"
-                                
+
                                 echo "Logging into Vault..."
                                 # Debug the curl command (without sensitive data)
                                 echo "Attempting Vault login to: ${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}"
-                                
+
                                 # Perform Vault login with better error handling
                                 VAULT_RESPONSE=$(curl -s -w "\n%{http_code}" --request POST \
                                     --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}' \
                                     "${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}")
-                                
+
                                 HTTP_CODE=$(echo "$VAULT_RESPONSE" | tail -n1)
                                 VAULT_BODY=$(echo "$VAULT_RESPONSE" | sed '$d')
-                                
+
                                 echo "Vault response HTTP code: ${HTTP_CODE}"
-                                
+
                                 if [ "$HTTP_CODE" != "200" ]; then
                                     echo "Vault login failed with HTTP code: ${HTTP_CODE}"
                                     echo "Response body: ${VAULT_BODY}"
                                     exit 1
                                 fi
-                                
+
                                 VAULT_TOKEN=$(curl -s --request POST \
                                     --header "Content-Type: application/json" \
                                     --data-raw '{"password": "'"${VAULT_PASSWORD}"'"}' \
                                     "${VAULT_ADDR}/v1/auth/userpass/login/${VAULT_USERNAME}" | jq -r '.auth.client_token')
-                                
+
                                 if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
                                     echo "Failed to extract Vault token from response"
                                     echo "Response body: ${VAULT_BODY}"
                                     exit 1
                                 fi
-                                
+
                                 export VAULT_TOKEN
                                 echo "Successfully logged into Vault"
 
@@ -305,10 +337,10 @@ pipeline {
                                 VAULT_RESPONSE=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
                                     "${VAULT_ADDR}/v1/kubeconfig/data/production")
                                 echo "Raw Vault response: ${VAULT_RESPONSE}"
-                                
+
                                 # Try different path structures and decode base64
                                 KUBECONFIG_CONTENT=$(echo "${VAULT_RESPONSE}" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig' | base64 -d)
-                                
+
                                 if [ -z "$KUBECONFIG_CONTENT" ] || [ "$KUBECONFIG_CONTENT" = "null" ]; then
                                     echo "Error: Failed to extract kubeconfig from Vault response"
                                     echo "Trying alternative path..."
@@ -320,16 +352,16 @@ pipeline {
                                     echo "Error: Kubeconfig content is empty or retrieval failed."
                                     exit 1
                                 fi
-                                
+
                                 echo "Setting up kubeconfig..."
                                 echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig-prod
                                 chmod 600 /tmp/kubeconfig-prod
                                 export KUBECONFIG=/tmp/kubeconfig-prod
-                                
+
                                 echo "Verifying tools installation..."
                                 helm version
                                 kubectl version --client
-                                
+
                                 echo "Deploying to production..."
                                 helm upgrade --install ${APP_NAME} ./helm \
                                     --set image.repository=${APP_NAME} \
@@ -339,8 +371,8 @@ pipeline {
                                     --set vault.addr=${VAULT_ADDR} \
                                     --set vault.role=${APP_NAME} \
                                     --set vault.path=secret/microservice \
-                                    -n production
-                                
+                                    -n microservice
+
                                 echo "Deployment completed successfully"
                             '''
                         } catch (Exception e) {
@@ -352,7 +384,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             container('deploy-tools') {
@@ -360,13 +392,13 @@ pipeline {
                     echo "Cleaning up Docker resources..."
                     # Remove the specific image we built
                     docker rmi ${APP_NAME}:${BUILD_NUMBER} || true
-                    
+
                     # Remove any dangling images
                     docker image prune -f
-                    
+
                     # Remove any stopped containers
                     docker container prune -f
-                    
+
                     # Clean up kubeconfig files
                     rm -f /tmp/kubeconfig-*
                 '''
@@ -377,4 +409,4 @@ pipeline {
             echo "Pipeline failed. Check the logs for details."
         }
     }
-} 
+}
