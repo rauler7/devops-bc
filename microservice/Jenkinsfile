@@ -223,14 +223,24 @@ pipeline {
                                 VAULT_SECRET_RESPONSE=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
                                     "${VAULT_ADDR}/v1/secret/data/microservice")
 
-                                if [ $? -ne 0 ] || [ -z "$VAULT_SECRET_RESPONSE" ]; then
-                                    echo "Error: Failed to verify Vault secrets"
+                                echo "Vault response: ${VAULT_SECRET_RESPONSE}"
+
+                                # Check for permission denied error
+                                if echo "$VAULT_SECRET_RESPONSE" | grep -q "permission denied"; then
+                                    echo "Error: Permission denied accessing Vault secrets. Please check Vault policy and token permissions."
+                                    echo "Current Vault token: ${VAULT_TOKEN:0:10}..."
+                                    echo "Attempting to list available paths..."
+                                    curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                        "${VAULT_ADDR}/v1/sys/mounts" | jq '.'
                                     exit 1
                                 fi
 
                                 # Check if secrets exist in the response
                                 if ! echo "$VAULT_SECRET_RESPONSE" | jq -e '.data.data' > /dev/null; then
                                     echo "Error: Required secrets not found in Vault at path secret/data/microservice"
+                                    echo "Available paths:"
+                                    curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+                                        "${VAULT_ADDR}/v1/secret/data/microservice?list=true" | jq '.'
                                     exit 1
                                 fi
 

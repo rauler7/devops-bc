@@ -22,7 +22,7 @@ terraform {
 # Create the development cluster
 resource "kind_cluster" "development" {
   name = "development-cluster"
-  
+
   kind_config {
     kind        = "Cluster"
     api_version = "kind.x-k8s.io/v1alpha4"
@@ -171,11 +171,19 @@ resource "kubernetes_cron_job_v1" "kubelet_audit" {
               name    = "audit"
               image   = "bitnami/kubectl:latest"
               command = ["/bin/bash", "-c", <<-EOT
-                kubectl get events --field-selector source=kubelet --sort-by='.lastTimestamp' | \
-                grep -E "Failed|Error|CrashLoopBackOff|ImagePullBackOff" > /tmp/events.log
-                
-                if [ -s /tmp/events.log ]; then
-                  echo "Critical events detected at $(date)" >> /tmp/events.log
+                # Get events and check for critical ones
+                CRITICAL_EVENTS=$$(kubectl get events --field-selector source=kubelet --sort-by='.lastTimestamp' | \
+                grep -E "Failed|Error|CrashLoopBackOff|ImagePullBackOff")
+
+                # If there are critical events, send to Discord
+                if [ ! -z "$${CRITICAL_EVENTS}" ]; then
+                  echo "Critical events detected at $$(date)"
+                  echo "$${CRITICAL_EVENTS}"
+
+                  # Send to Discord
+                  curl -H "Content-Type: application/json" \
+                       -d "{\"content\":\"🚨 **Kubernetes Audit Alert**\n\`\`\`\n$${CRITICAL_EVENTS}\n\`\`\`\"}" \
+                       "https://discord.com/api/webhooks/1382390628956242072/zeiUVef_Gk2xYn1tMdmrYHBsxi61XpyVQapbQjqCASzQJh0qB4y66j6o2Fy-6fHw5hH3"
                 fi
               EOT
               ]
@@ -190,6 +198,13 @@ resource "kubernetes_cron_job_v1" "kubelet_audit" {
       }
     }
   }
+}
+
+# Add variable for Discord webhook URL
+variable "discord_webhook_url" {
+  description = "Discord webhook URL for sending audit notifications"
+  type        = string
+  sensitive   = true
 }
 
 resource "kubernetes_deployment" "microservice1" {

@@ -26,12 +26,12 @@ vault:
       - name: app-config
         path: secret/data/microservice
         template: |
-          {{ "{{" }} with secret "secret/data/microservice" {{ "}}" }}
+          {{- with secret "secret/data/microservice" -}}
           {
-            "username": "{{ "{{" }} .Data.data.username {{ "}}" }}",
-            "password": "{{ "{{" }} .Data.data.password {{ "}}" }}"
+            "username": "{{ .Data.data.username }}",
+            "password": "{{ .Data.data.password }}"
           }
-          {{ "{{" }} end {{ "}}" }}
+          {{- end }}
 
 # Environment variables configuration
 env:

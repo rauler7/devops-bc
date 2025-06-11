@@ -1,9 +1,11 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: vault-agent-config
+  name: {{ .Release.Name }}-vault-agent-config
+  labels:
+    app: {{ .Release.Name }}
 data:
-  config.hcl: |
+  vault-agent-config.hcl: |
     exit_after_auth = true
     pid_file = "/home/vault/pidfile"
 
@@ -17,23 +19,10 @@ data:
     }
 
     template {
-      destination = "/vault/secrets/config.json"
-      contents = <<EOH
-      {{- if .Values.vault.enabled }}
-      {{ "{{" }} with secret "{{ .Values.vault.path }}" {{ "}}" }}
-      {
-        "database": {
-          "host": "{{ "{{" }} .Data.data.database_host {{ "}}" }}",
-          "port": "{{ "{{" }} .Data.data.database_port {{ "}}" }}",
-          "name": "{{ "{{" }} .Data.data.database_name {{ "}}" }}",
-          "user": "{{ "{{" }} .Data.data.database_user {{ "}}" }}",
-          "password": "{{ "{{" }} .Data.data.database_password {{ "}}" }}"
-        },
-        "api": {
-          "key": "{{ "{{" }} .Data.data.api_key {{ "}}" }}"
-        }
-      }
-      {{ "{{" }} end {{ "}}" }}
-      {{- end }}
-      EOH
+      source      = "/vault/template/app-config.json.tpl"
+      destination = "/vault/secrets/app-config.json"
+    }
+
+    vault {
+      address = "{{ .Values.vault.addr }}"
     }
