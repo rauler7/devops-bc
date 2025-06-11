@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubelet-audit-sa
+  namespace: development
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: development
+  name: kubelet-audit-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events", "pods/log"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubelet-audit-binding
+  namespace: development
+subjects:
+  - kind: ServiceAccount
+    name: kubelet-audit-sa
+    namespace: development
+roleRef:
+  kind: Role
+  name: kubelet-audit-role
+  apiGroup: rbac.authorization.k8s.io
