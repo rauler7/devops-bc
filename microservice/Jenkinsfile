@@ -172,14 +172,14 @@ pipeline {
                                     "${VAULT_ADDR}/v1/kubeconfig/data/development")
                                 echo "Raw Vault response: ${VAULT_RESPONSE}"
                                 
-                                # Try different path structures
-                                KUBECONFIG_CONTENT=$(echo "${VAULT_RESPONSE}" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                # Try different path structures and decode base64
+                                KUBECONFIG_CONTENT=$(echo "${VAULT_RESPONSE}" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig' | base64 -d)
                                 
                                 if [ -z "$KUBECONFIG_CONTENT" ] || [ "$KUBECONFIG_CONTENT" = "null" ]; then
                                     echo "Error: Failed to extract kubeconfig from Vault response"
                                     echo "Trying alternative path..."
                                     KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                        "${VAULT_ADDR}/v1/kubeconfig/data/development" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                        "${VAULT_ADDR}/v1/kubeconfig/data/development" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig' | base64 -d)
                                 fi
 
                                 if [ -z "$KUBECONFIG_CONTENT" ]; then
@@ -189,6 +189,7 @@ pipeline {
                                 
                                 echo "Setting up kubeconfig..."
                                 echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig-dev
+                                chmod 600 /tmp/kubeconfig-dev
                                 export KUBECONFIG=/tmp/kubeconfig-dev
                                 
                                 echo "Verifying kubeconfig file size..."
@@ -292,14 +293,14 @@ pipeline {
                                     "${VAULT_ADDR}/v1/kubeconfig/data/production")
                                 echo "Raw Vault response: ${VAULT_RESPONSE}"
                                 
-                                # Try different path structures
-                                KUBECONFIG_CONTENT=$(echo "${VAULT_RESPONSE}" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                # Try different path structures and decode base64
+                                KUBECONFIG_CONTENT=$(echo "${VAULT_RESPONSE}" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig' | base64 -d)
                                 
                                 if [ -z "$KUBECONFIG_CONTENT" ] || [ "$KUBECONFIG_CONTENT" = "null" ]; then
                                     echo "Error: Failed to extract kubeconfig from Vault response"
                                     echo "Trying alternative path..."
                                     KUBECONFIG_CONTENT=$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
-                                        "${VAULT_ADDR}/v1/kubeconfig/data/development" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig')
+                                        "${VAULT_ADDR}/v1/kubeconfig/data/production" | jq -r '.data.data.kubeconfig // .data.kubeconfig // .kubeconfig' | base64 -d)
                                 fi
 
                                 if [ -z "$KUBECONFIG_CONTENT" ]; then
@@ -309,6 +310,7 @@ pipeline {
                                 
                                 echo "Setting up kubeconfig..."
                                 echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig-prod
+                                chmod 600 /tmp/kubeconfig-prod
                                 export KUBECONFIG=/tmp/kubeconfig-prod
                                 
                                 echo "Verifying tools installation..."
