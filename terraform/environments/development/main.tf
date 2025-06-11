@@ -166,6 +166,7 @@ resource "kubernetes_cron_job_v1" "kubelet_audit" {
           }
 
           spec {
+            service_account_name = "kubelet-audit-sa"
             container {
               name    = "audit"
               image   = "bitnami/kubectl:latest"
@@ -178,6 +179,10 @@ resource "kubernetes_cron_job_v1" "kubelet_audit" {
                 fi
               EOT
               ]
+              security_context {
+                run_as_user  = 1001
+                run_as_group = 1001
+              }
             }
             restart_policy = "OnFailure"
           }
