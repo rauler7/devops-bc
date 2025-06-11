@@ -190,6 +190,10 @@ pipeline {
                                 echo "Setting up kubeconfig..."
                                 echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig-dev
                                 chmod 600 /tmp/kubeconfig-dev
+                                
+                                # Update the server URL to use the correct endpoint
+                                sed -i 's|server: https://127.0.0.1:[0-9]*|server: https://host.docker.internal:42675|g' /tmp/kubeconfig-dev
+                                
                                 export KUBECONFIG=/tmp/kubeconfig-dev
                                 
                                 echo "Verifying kubeconfig file size..."

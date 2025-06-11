@@ -30,8 +30,16 @@ resource "kind_cluster" "development" {
     node {
       role = "control-plane"
       kubeadm_config_patches = [
-        "kind: InitConfiguration\nnodeRegistration:\n  kubeletExtraArgs:\n    node-labels: \"ingress-ready=true\""
+        "kind: InitConfiguration\nnodeRegistration:\n  kubeletExtraArgs:\n    node-labels: \"ingress-ready=true\"",
+        "kind: ClusterConfiguration\napiServer:\n  certSANs:\n  - localhost\n  - 127.0.0.1\n  - 0.0.0.0\n  - 10.96.0.1\n  - 172.18.0.4",
+        "kind: KubeletConfiguration\ncgroupDriver: systemd"
       ]
+      extra_port_mappings {
+        container_port = 6443
+        host_port      = 42675
+        protocol       = "TCP"
+        listen_address = "127.0.0.1"
+      }
       extra_port_mappings {
         container_port = 80
         host_port      = 8081
@@ -48,21 +56,29 @@ resource "kind_cluster" "development" {
       role = "worker"
     }
   }
+
+  wait_for_ready = true
 }
 
 # Configure providers to use the development cluster
 provider "kubernetes" {
-  config_path = kind_cluster.development.kubeconfig_path
+  host                   = "https://127.0.0.1:42675"
+  config_path            = kind_cluster.development.kubeconfig_path
+  insecure               = true
 }
 
 provider "helm" {
   kubernetes {
-    config_path = kind_cluster.development.kubeconfig_path
+    host                   = "https://127.0.0.1:42675"
+    config_path            = kind_cluster.development.kubeconfig_path
+    insecure               = true
   }
 }
 
 provider "kubectl" {
-  config_path = kind_cluster.development.kubeconfig_path
+  host                   = "https://127.0.0.1:42675"
+  config_path            = kind_cluster.development.kubeconfig_path
+  insecure               = true
 }
 
 # Create namespace for the microservice
