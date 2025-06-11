@@ -207,6 +207,15 @@ pipeline {
                                 kubectl version --client
                                 
                                 echo "Deploying to development..."
+                                # Change to the microservice directory where the helm chart is located
+                                cd microservice
+                                
+                                # Verify helm chart exists
+                                if [ ! -d "./helm" ]; then
+                                    echo "Error: Helm chart directory not found at ./helm"
+                                    exit 1
+                                fi
+                                
                                 helm upgrade --install ${APP_NAME} ./helm \
                                     --set image.repository=${APP_NAME} \
                                     --set image.tag=${BUILD_NUMBER} \
