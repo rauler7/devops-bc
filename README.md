@@ -297,8 +297,7 @@ terraform apply
 ## Monitoring and Logging
 
 - Custom audit logging for security events
-![kubelet-audit](https://github.com/user-attachments/assets/72743791-7f6f-4a42-b031-b5ef6a4e9bef)
-
+![image](https://github.com/user-attachments/assets/e7b5c3d0-a703-4ce8-bafc-256d97089e7d)
 
 ## Troubleshooting
 
