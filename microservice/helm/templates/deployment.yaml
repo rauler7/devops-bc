@@ -20,12 +20,7 @@ spec:
         vault.hashicorp.com/role: {{ .Values.vault.role }}
         vault.hashicorp.com/agent-inject-secret-app-config.json: {{ .Values.vault.path }}
         vault.hashicorp.com/agent-inject-template-app-config.json: |
-          {{- with secret (printf "%s" .Values.vault.path) -}}
-          {
-            "username": "{{ .Data.data.username }}",
-            "password": "{{ .Data.data.password }}"
-          }
-          {{- end }}
+          {{- include "microservice.vaultSecret" . | nindent 10 }}
 {{- end }}
     spec:
       containers:
